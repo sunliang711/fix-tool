@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	fixtool "fix-tool"
 	"fix-tool/internal/config"
 	"fix-tool/internal/logging"
 	"fix-tool/internal/validate"
@@ -93,6 +95,7 @@ func newConfigCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 		Use:   "config",
 		Short: "Manage configuration",
 	}
+	configCmd.AddCommand(newConfigExampleCommand())
 	configCmd.AddCommand(&cobra.Command{
 		Use:   "validate",
 		Short: "Validate configuration",
@@ -127,4 +130,52 @@ func newConfigCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 		},
 	})
 	return configCmd
+}
+
+func newConfigExampleCommand() *cobra.Command {
+	var output string
+	var force bool
+	command := &cobra.Command{
+		Use:   "example",
+		Short: "Generate example configuration",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := writeConfigExample(output, force); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "config example written to %s\n", output)
+			return err
+		},
+	}
+	command.Flags().StringVarP(&output, "output", "o", configExampleFile, "output file")
+	command.Flags().BoolVar(&force, "force", false, "overwrite existing output file")
+	return command
+}
+
+const configExampleFile = "config-example.toml"
+
+func writeConfigExample(output string, force bool) error {
+	if output == "" {
+		return fmt.Errorf("output file is required")
+	}
+	data := []byte(fixtool.ConfigExampleTOML())
+	if force {
+		if err := os.WriteFile(output, data, 0644); err != nil {
+			return fmt.Errorf("write config example %s: %w", output, err)
+		}
+		return nil
+	}
+	file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("config example %s already exists, use --force to overwrite", output)
+		}
+		return fmt.Errorf("create config example %s: %w", output, err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("write config example %s: %w", output, err)
+	}
+	return nil
 }

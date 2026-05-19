@@ -56,7 +56,7 @@ testdata/
 - 配置加载统一放在 `internal/config`。
 - 加载顺序：内置默认值 < `config.toml` < `private.toml` < 环境变量 < CLI flags。
 - 配置必须反序列化到强类型结构后再注入业务模块。
-- 新增配置字段必须同步更新默认配置、校验逻辑和示例文档。
+- 新增、修改或删除配置字段时，必须同步更新 `config/default.toml`、`config-example.toml`、`fix-tool config example` 子命令输出、用户文档、配置规范、配置加载逻辑、校验逻辑和对应测试。
 - 密码、Token、证书私钥不得写入提交到 Git 的示例配置。
 - TLS 默认启用证书校验；允许通过 profile 显式修改，但必须输出英文风险提示。
 
@@ -116,4 +116,3 @@ testdata/
 - 所有连接配置统一称为 `profile`。
 - 所有用户可扩展字段统一称为 `custom tag`。
 - P0 MsgType 模板必须优先保持参数稳定，后续新增字段通过 `--tag key=value` 补充。
-

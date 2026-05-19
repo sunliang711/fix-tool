@@ -37,7 +37,12 @@ ls dist/release
 
 ## 从配置到下单
 
-创建公开配置 `config.toml`：
+创建公开配置 `config.toml`。完整字段说明见 [`config-example.toml`](config-example.toml)：
+
+```bash
+fix-tool config example --output config-example.toml
+fix-tool config example --output config-example.toml --force
+```
 
 ```toml
 [app]
@@ -116,3 +121,13 @@ fix-tool --config config.toml --private private.toml order new \
 ```
 
 更多说明见 [用户指南](docs/project/fix-tool/user-guide.md) 和 [FAQ / 排障指南](docs/project/fix-tool/faq.md)。
+
+## 配置维护约定
+
+后续只要新增、删除或调整配置项，必须同步更新：
+
+- `config/default.toml`
+- `config-example.toml`
+- `docs/project/fix-tool/user-guide.md`
+- `docs/project/fix-tool/conventions.md`
+- 对应的配置加载、校验和测试代码

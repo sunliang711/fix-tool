@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	fixtool "fix-tool"
+
 	"github.com/rs/zerolog"
 )
 
@@ -279,6 +281,104 @@ func TestConfigValidate(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "configuration is valid") {
 		t.Fatalf("validate output = %q, want success message", out.String())
+	}
+}
+
+func TestConfigExampleWritesDefaultFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"config", "example"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "config example written to config-example.toml") {
+		t.Fatalf("output = %q, want written message", out.String())
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "config-example.toml"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != fixtool.ConfigExampleTOML() {
+		t.Fatalf("config example content mismatch")
+	}
+}
+
+func TestConfigExampleWritesOutputFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "example.toml")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"config", "example", "--output", path}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != fixtool.ConfigExampleTOML() {
+		t.Fatalf("config example content mismatch")
+	}
+}
+
+func TestConfigExampleRefusesOverwriteWithoutForce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config-example.toml")
+	if err := os.WriteFile(path, []byte("existing"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"config", "example", "--output", path}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	err := command.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("ExecuteContext() error = nil, want overwrite error")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("ExecuteContext() error = %v, want already exists error", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != "existing" {
+		t.Fatalf("file content = %q, want existing", string(data))
+	}
+}
+
+func TestConfigExampleForceOverwrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config-example.toml")
+	if err := os.WriteFile(path, []byte("existing"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"config", "example", "--output", path, "--force"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != fixtool.ConfigExampleTOML() {
+		t.Fatalf("config example content mismatch")
 	}
 }
 

@@ -1,0 +1,135 @@
+# fix-tool 完整配置示例
+#
+# 配置加载优先级从低到高：
+# 内置默认值 < config/default.toml < config.toml < private.toml < FIX_TOOL_* 环境变量 < CLI flags
+#
+# 建议用法：
+# - config.toml 放公开环境配置，可提交到受控的内部配置仓库。
+# - private.toml 只放本机账号、密码、Token、私钥路径等私密信息，不要提交到 Git。
+# - 本文件用于说明全部配置项，不建议直接存放真实凭据。
+
+[app]
+# 应用名称，用于标识当前 CLI。通常保持默认值即可。
+name = "fix-tool"
+
+[log]
+# 日志级别。可选值：debug、info、warn、error。
+# 生产或联调默认建议使用 info；排障时可临时改为 debug。
+level = "info"
+
+# 日志格式。可选值：json、console。
+# json 适合机器采集；console 适合本地终端阅读。
+format = "console"
+
+[profile]
+# 当前连接配置名称，仅用于展示、日志和 trace 标识。
+# --profile 只会覆盖这个名称，不会在同一个文件中选择多个 profile。
+name = "uat"
+
+# FIX 协议版本，例如 FIX.4.2、FIX.4.4。
+# 必须与对端网关的 session 配置一致。
+begin_string = "FIX.4.4"
+
+# 本端 SenderCompID，对应 FIX tag 49。
+# 必须与对端网关为当前账号分配的 SenderCompID 一致。
+sender_comp_id = "CLIENT01"
+
+# 对端 TargetCompID，对应 FIX tag 56。
+# 必须与对端网关公布的 TargetCompID 一致。
+target_comp_id = "BROKER01"
+
+# 登录用户名，对应 FIX Logon tag 553。
+# 建议在 private.toml 或 FIX_TOOL_PROFILE_USERNAME 中配置，避免提交到 Git。
+username = ""
+
+# 登录密码，对应 FIX Logon tag 554。
+# 建议在 private.toml 或 FIX_TOOL_PROFILE_PASSWORD 中配置，避免提交到 Git。
+password = ""
+
+# FIX 网关主机名或 IP。
+host = "fix-uat.example.com"
+
+# FIX 网关端口，范围 1-65535。
+port = 9876
+
+# HeartBtInt 心跳间隔，使用 Go duration 格式。
+# QuickFIX/Go 最终需要整秒值，因此必须大于等于 1s 且不能包含小数秒。
+heartbeat_interval = "30s"
+
+# 登录时是否发送 ResetSeqNumFlag=Y。
+# 是否开启取决于对端网关约定；生产环境变更前需要确认序号策略。
+reset_on_logon = true
+
+# FIX 应用字典文件路径。
+# 为空时使用 QuickFIX/Go 默认行为；需要校验自定义字段或版本时填写本地 XML 路径。
+data_dictionary = ""
+
+# FIXT transport 字典文件路径。
+# FIXT 会话或 FIX 5.x 场景可能需要配置。
+transport_data_dictionary = ""
+
+# FIX app 字典文件路径。
+# FIXT 会话或 FIX 5.x 场景可能需要配置。
+app_data_dictionary = ""
+
+[profile.tls]
+# 是否使用 TLS 连接 FIX 网关。
+# 对外或生产环境建议保持 true。
+enabled = true
+
+# 是否跳过 TLS 证书和主机名校验。
+# 仅限临时测试环境排障使用；生产环境必须保持 false。
+insecure_skip_verify = false
+
+# CA 证书路径。对端使用私有 CA 或自签证书时配置。
+ca_file = "./certs/uat-ca.pem"
+
+# 客户端证书路径。对端要求 mTLS 时配置；与 key_file 必须成对出现。
+cert_file = ""
+
+# 客户端私钥路径。对端要求 mTLS 时配置；与 cert_file 必须成对出现。
+key_file = ""
+
+[output]
+# 输出格式。可选值：table、raw、json。
+# table 适合人工阅读；raw 适合复制 FIX 报文；json 适合自动化处理。
+format = "table"
+
+# raw 报文展示分隔符。
+# FIX 内部使用真实 SOH；终端展示默认用 | 便于阅读。
+raw_delimiter = "|"
+
+# 是否默认脱敏敏感字段。
+# true 时会隐藏账号、密码、Token、签名、RawData 等敏感值。
+redact_sensitive = true
+
+[[profile.custom_tags]]
+# 自定义 FIX tag 编号，必须为正整数。
+tag = 9001
+
+# 自定义 tag 名称，用于 table/json 字段展示。
+name = "SessionToken"
+
+# 自定义 tag 类型，用于展示和文档说明，例如 STRING、CHAR、INT、QTY、PRICE。
+type = "STRING"
+
+# 是否为当前业务必填字段。当前主要用于字典展示，不会自动强制下单参数必填。
+required = false
+
+# 是否敏感。true 时在输出中默认显示为 [REDACTED]。
+sensitive = true
+
+# 字段说明，用于描述业务含义和对端约定。
+description = "示例敏感字段，输出时默认脱敏"
+
+[[profile.custom_tags]]
+# 可配置多个自定义 tag。
+tag = 9002
+name = "Desk"
+type = "STRING"
+required = false
+sensitive = false
+description = "交易台标识"
+
+# 枚举值说明。渲染时会把字段值映射成人可读含义。
+enums = { ALPHA = "Alpha desk", BETA = "Beta desk" }
