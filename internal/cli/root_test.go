@@ -23,10 +23,43 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out.String(), "FIX protocol testing CLI") {
 		t.Fatalf("help output = %q, want root help", out.String())
 	}
-	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order"} {
+	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order", "shell"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want command %q", out.String(), want)
 		}
+	}
+}
+
+func TestShellHelp(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"shell", "--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Start interactive FIX shell") {
+		t.Fatalf("help output = %q, want shell help", out.String())
+	}
+}
+
+func TestShellCommandReadsInjectedInput(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"shell"}, IO{
+		In:     strings.NewReader("exit\n"),
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "fix-tool> ") {
+		t.Fatalf("shell output = %q, want prompt", out.String())
 	}
 }
 

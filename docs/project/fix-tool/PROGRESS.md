@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- 阶段：任务 05 已完成，等待任务 06。
+- 阶段：任务 06 已完成，等待任务 07。
 - 当前版本：规划 V0.1。
 - 最后更新：2026-05-19。
 
@@ -25,7 +25,7 @@
 | 03 报文捕获、解析、字段名映射、脱敏渲染 | 已完成 | 已完成 trace、raw 解析、字段字典、BodyLength/CheckSum 校验、脱敏、table/json/raw 渲染和测试 |
 | 04 admin 命令 | 已完成 | 已完成 logon、logout、heartbeat、test-request 命令、admin service、发送/等待/超时逻辑和测试 |
 | 05 order 命令 | 已完成 | 已完成 order new/cancel/replace 命令、订单消息构造、响应匹配、custom tag、trace 输出和测试 |
-| 06 交互式 shell | 未开始 | 依赖任务 04、05 |
+| 06 交互式 shell | 已完成 | 已完成 shell 命令、有限命令解析、共享 session、trace list、错误不中断、退出关闭和测试 |
 | 07 raw send、inspect raw、自定义 tag overlay | 未开始 | 依赖任务 03、05 |
 | 08 scenario runner 与断言 | 未开始 | 依赖任务 04、05、07 |
 | 09 测试、mock acceptor、样例配置 | 未开始 | 依赖任务 01-08 |
@@ -39,4 +39,4 @@
 
 ## 下一步
 
-从 `task-06-interactive-shell.md` 开始开发。
+从 `task-07-raw-and-custom-tags.md` 开始开发。

@@ -37,6 +37,10 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	if errOut == nil {
 		errOut = os.Stderr
 	}
+	in := io.In
+	if in == nil {
+		in = os.Stdin
+	}
 	flags := &flagState{}
 	root := &cobra.Command{
 		Use:           "fix-tool",
@@ -49,6 +53,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 		},
 	}
 	root.SetArgs([]string(args))
+	root.SetIn(in)
 	root.SetOut(out)
 	root.SetErr(errOut)
 	root.PersistentFlags().StringVar(&flags.defaultConfig, "default-config", "", "default configuration file")
@@ -65,6 +70,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	root.AddCommand(newConfigCommand(flags, logger))
 	root.AddCommand(newAdminCommands(flags, logger)...)
 	root.AddCommand(newOrderCommand(flags, logger))
+	root.AddCommand(newShellCommand(flags, logger))
 	return &RootCommand{Command: root}
 }
 

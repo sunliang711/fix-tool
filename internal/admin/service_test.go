@@ -153,6 +153,36 @@ func TestServiceReturnsTimeout(t *testing.T) {
 	}
 }
 
+func TestServiceKeepSessionReusesLoggedOnState(t *testing.T) {
+	manager := newFakeManager()
+	manager.onStart = func() {
+		if manager.starts == 1 {
+			manager.emit(fixsession.Event{Type: fixsession.EventToAdmin, MsgType: msgTypeLogon, Message: rawAdmin(msgTypeLogon, "")})
+			manager.emit(fixsession.Event{Type: fixsession.EventFromAdmin, MsgType: msgTypeLogon, Message: rawAdmin(msgTypeLogon, "")})
+			manager.emit(fixsession.Event{Type: fixsession.EventLogon})
+		}
+	}
+	manager.session.onSend = func(message *quickfix.Message) {
+		msgType := mustHeaderValue(t, message, tagMsgType)
+		manager.emit(fixsession.Event{Type: fixsession.EventToAdmin, MsgType: msgType, Message: rawAdmin(msgType, "")})
+		manager.emit(fixsession.Event{Type: fixsession.EventFromAdmin, MsgType: msgType, Message: rawAdmin(msgType, "")})
+	}
+	service := NewService(manager, Options{Timeout: time.Second, KeepSession: true})
+
+	if _, err := service.Logon(context.Background()); err != nil {
+		t.Fatalf("Logon() error = %v", err)
+	}
+	if _, err := service.Heartbeat(context.Background()); err != nil {
+		t.Fatalf("Heartbeat() error = %v", err)
+	}
+	if manager.starts != 2 {
+		t.Fatalf("starts = %d, want 2", manager.starts)
+	}
+	if manager.stops != 0 {
+		t.Fatalf("stops = %d, want 0", manager.stops)
+	}
+}
+
 func TestServiceRequiresTestRequestID(t *testing.T) {
 	service := NewService(newFakeManager(), Options{Timeout: time.Second})
 

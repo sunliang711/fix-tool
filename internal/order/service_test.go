@@ -205,6 +205,46 @@ func TestServiceReturnsTimeout(t *testing.T) {
 	}
 }
 
+func TestServiceKeepSessionSkipsLogonWaitWhenStateIsLoggedOn(t *testing.T) {
+	manager := newFakeManager()
+	manager.session.onSend = func(value *quickfix.Message) {
+		msgType := testHeaderValue(value, message.TagMsgType)
+		manager.emit(fixsession.Event{
+			Type:    fixsession.EventToApp,
+			MsgType: msgType,
+			Message: rawFromMessage(value),
+		})
+		manager.emit(fixsession.Event{
+			Type:    fixsession.EventFromApp,
+			MsgType: message.MsgTypeExecutionReport,
+			Message: rawFIX(message.MsgTypeExecutionReport, map[int]string{
+				message.TagClOrdID: "C001",
+				message.TagOrderID: "O001",
+			}),
+		})
+	}
+	state := &memorySessionState{}
+	state.SetLoggedOn(true)
+	service := NewService(manager, Options{Timeout: time.Second, KeepSession: true, SessionState: state})
+
+	_, err := service.NewOrder(context.Background(), NewRequest{
+		ClOrdID:  "C001",
+		Symbol:   "AAPL",
+		Side:     "buy",
+		OrderQty: "100",
+		Price:    "10.25",
+	})
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	if manager.starts != 1 {
+		t.Fatalf("starts = %d, want 1", manager.starts)
+	}
+	if manager.stops != 0 {
+		t.Fatalf("stops = %d, want 0", manager.stops)
+	}
+}
+
 type fakeManager struct {
 	events  chan fixsession.Event
 	session *fakeSession

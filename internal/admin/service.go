@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"fix-tool/internal/fixsession"
@@ -33,14 +34,24 @@ var (
 )
 
 type Options struct {
-	Timeout     time.Duration
-	StopTimeout time.Duration
+	Timeout      time.Duration
+	StopTimeout  time.Duration
+	KeepSession  bool
+	SessionState SessionState
+}
+
+// SessionState 用于 shell 内跨 admin/order service 共享登录状态，避免重复等待已被消费的 Logon 事件。
+type SessionState interface {
+	LoggedOn() bool
+	SetLoggedOn(bool)
 }
 
 type Service struct {
 	manager     fixsession.Manager
 	timeout     time.Duration
 	stopTimeout time.Duration
+	keepSession bool
+	state       SessionState
 }
 
 type Result struct {
@@ -68,6 +79,8 @@ func NewService(manager fixsession.Manager, options Options) *Service {
 		manager:     manager,
 		timeout:     timeout,
 		stopTimeout: stopTimeout,
+		keepSession: options.KeepSession,
+		state:       sessionStateOrDefault(options.SessionState),
 	}
 }
 
@@ -80,7 +93,15 @@ func (s *Service) Logon(ctx context.Context) (result Result, err error) {
 	}
 	defer s.stopAfterCommand(&err)
 
-	return s.waitLogon(ctx, true)
+	if s.loggedOn() {
+		return Result{}, nil
+	}
+	result, err = s.waitLogon(ctx, true)
+	if err != nil {
+		return Result{}, err
+	}
+	s.setLoggedOn(true)
+	return result, nil
 }
 
 func (s *Service) Logout(ctx context.Context) (result Result, err error) {
@@ -138,7 +159,7 @@ func (s *Service) execute(ctx context.Context, spec commandSpec) (result Result,
 	}
 	defer s.stopAfterCommand(&err)
 
-	if _, err := s.waitLogon(ctx, false); err != nil {
+	if err := s.ensureLoggedOn(ctx); err != nil {
 		return Result{}, err
 	}
 
@@ -150,7 +171,11 @@ func (s *Service) execute(ctx context.Context, spec commandSpec) (result Result,
 	if err := session.Send(spec.buildMessage()); err != nil {
 		return Result{}, fmt.Errorf("%s send admin message: %w", spec.name, err)
 	}
-	return s.waitExchange(ctx, spec, sentAt)
+	result, err = s.waitExchange(ctx, spec, sentAt)
+	if err == nil && spec.msgType == msgTypeLogout {
+		s.setLoggedOn(false)
+	}
+	return result, err
 }
 
 func (s *Service) start(ctx context.Context) error {
@@ -164,11 +189,15 @@ func (s *Service) start(ctx context.Context) error {
 }
 
 func (s *Service) stopAfterCommand(err *error) {
+	if s.keepSession {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.stopTimeout)
 	defer cancel()
 	if stopErr := s.manager.Stop(ctx); stopErr != nil && *err == nil {
 		*err = fmt.Errorf("stop fix session: %w", stopErr)
 	}
+	s.setLoggedOn(false)
 }
 
 func (s *Service) session() (fixsession.Session, error) {
@@ -211,6 +240,17 @@ func (s *Service) waitLogon(ctx context.Context, collectTrace bool) (Result, err
 			return result, nil
 		}
 	}
+}
+
+func (s *Service) ensureLoggedOn(ctx context.Context) error {
+	if s.loggedOn() {
+		return nil
+	}
+	if _, err := s.waitLogon(ctx, false); err != nil {
+		return err
+	}
+	s.setLoggedOn(true)
+	return nil
 }
 
 func (s *Service) waitExchange(ctx context.Context, spec commandSpec, sentAt time.Time) (Result, error) {
@@ -306,4 +346,42 @@ func (s *Service) profileName() string {
 		return ""
 	}
 	return session.ProfileName()
+}
+
+func (s *Service) loggedOn() bool {
+	if s == nil || s.state == nil {
+		return false
+	}
+	return s.state.LoggedOn()
+}
+
+func (s *Service) setLoggedOn(value bool) {
+	if s == nil || s.state == nil {
+		return
+	}
+	s.state.SetLoggedOn(value)
+}
+
+func sessionStateOrDefault(state SessionState) SessionState {
+	if state != nil {
+		return state
+	}
+	return &memorySessionState{}
+}
+
+type memorySessionState struct {
+	mu       sync.RWMutex
+	loggedOn bool
+}
+
+func (s *memorySessionState) LoggedOn() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loggedOn
+}
+
+func (s *memorySessionState) SetLoggedOn(value bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loggedOn = value
 }
