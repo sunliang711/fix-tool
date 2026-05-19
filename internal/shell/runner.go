@@ -229,19 +229,40 @@ const shellHelpText = `Commands:
     required: --id <id>
 
   order new        Send NewOrderSingle
-    required: --symbol <s> --side <buy|sell> --qty <q>
-    optional: --cl-ord-id <id> --price <p> --ord-type <type>
-              --time-in-force <tif> --tag <tag=value>
+    required:
+      --symbol <s>
+      --side <buy|sell>
+      --qty <q>
+    optional:
+      --cl-ord-id <id>
+      --price <p>
+      --ord-type <type>
+      --time-in-force <tif>
+      --tag <tag=value>
 
   order cancel     Send OrderCancelRequest
-    required: --orig-cl-ord-id <id> --symbol <s> --side <buy|sell>
-    optional: --cl-ord-id <id> --order-id <id> --tag <tag=value>
+    required:
+      --orig-cl-ord-id <id>
+      --symbol <s>
+      --side <buy|sell>
+    optional:
+      --cl-ord-id <id>
+      --order-id <id>
+      --tag <tag=value>
 
   order replace    Send OrderCancelReplaceRequest
-    required: --orig-cl-ord-id <id> --symbol <s> --side <buy|sell>
-              --qty <q> --price <p>
-    optional: --cl-ord-id <id> --order-id <id> --ord-type <type>
-              --time-in-force <tif> --tag <tag=value>
+    required:
+      --orig-cl-ord-id <id>
+      --symbol <s>
+      --side <buy|sell>
+      --qty <q>
+      --price <p>
+    optional:
+      --cl-ord-id <id>
+      --order-id <id>
+      --ord-type <type>
+      --time-in-force <tif>
+      --tag <tag=value>
 
   save <file>      Start saving shell transcript
   save stop        Stop saving shell transcript

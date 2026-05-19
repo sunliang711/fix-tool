@@ -153,7 +153,7 @@ func TestRunnerHelpCommand(t *testing.T) {
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Commands:", "help, ?", "logon", "order new", "save <file>", "trace list", "exit, quit", "Up/Down", "F2"} {
+	for _, want := range []string{"Commands:", "help, ?", "logon", "order new", "required:\n      --symbol <s>", "optional:\n      --cl-ord-id <id>", "save <file>", "trace list", "exit, quit", "Up/Down", "F2"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("out = %q, want %q", out.String(), want)
 		}
