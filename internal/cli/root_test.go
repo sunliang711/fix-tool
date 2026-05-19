@@ -23,7 +23,7 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out.String(), "FIX protocol testing CLI") {
 		t.Fatalf("help output = %q, want root help", out.String())
 	}
-	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order", "shell"} {
+	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order", "shell", "run"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want command %q", out.String(), want)
 		}
@@ -43,6 +43,24 @@ func TestShellHelp(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Start interactive FIX shell") {
 		t.Fatalf("help output = %q, want shell help", out.String())
+	}
+}
+
+func TestRunHelpShowsScenarioFlags(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"run", "--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"Run FIX scenario steps", "--json", "--result-file", "--output-file"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("help output = %q, want %q", out.String(), want)
+		}
 	}
 }
 

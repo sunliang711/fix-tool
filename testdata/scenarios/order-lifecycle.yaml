@@ -1,0 +1,49 @@
+name: order-lifecycle
+steps:
+  - name: logon
+    action: logon
+    wait:
+      msg_type: A
+    assert:
+      - field: msg_type
+        equals: A
+
+  - name: new-order
+    action: order.new
+    input:
+      cl_ord_id: C001
+      symbol: AAPL
+      side: buy
+      qty: "100"
+      price: "10.25"
+      ord_type: limit
+      time_in_force: day
+    wait:
+      msg_type: "8"
+    assert:
+      - field: msg_type
+        equals: "8"
+      - field: cl_ord_id
+        equals: C001
+      - field: exec_type
+        in: ["0", "4", "8"]
+
+  - name: cancel-order
+    action: order.cancel
+    input:
+      orig_cl_ord_id: C001
+      cl_ord_id: C002
+      symbol: AAPL
+      side: buy
+    wait:
+      msg_type: "8"
+    assert:
+      - field: cl_ord_id
+        equals: C002
+      - field: exec_type
+        exists: true
+
+  - name: logout
+    action: logout
+    wait:
+      msg_type: "5"
