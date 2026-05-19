@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ const (
 
 	tagMsgType   = quickfix.Tag(35)
 	tagTestReqID = quickfix.Tag(112)
+	soh          = "\x01"
 
 	DefaultTimeout     = 30 * time.Second
 	defaultStopTimeout = 5 * time.Second
@@ -31,6 +33,7 @@ var (
 	ErrSessionUnavailable    = errors.New("fix session unavailable")
 	ErrEventStreamClosed     = errors.New("fix event stream closed")
 	ErrTestRequestIDRequired = errors.New("test request id is required")
+	ErrTestRequestIDInvalid  = errors.New("test request id cannot contain SOH delimiter")
 )
 
 type Options struct {
@@ -133,6 +136,9 @@ func (s *Service) Heartbeat(ctx context.Context) (result Result, err error) {
 func (s *Service) TestRequest(ctx context.Context, id string) (result Result, err error) {
 	if id == "" {
 		return Result{}, ErrTestRequestIDRequired
+	}
+	if strings.Contains(id, soh) {
+		return Result{}, ErrTestRequestIDInvalid
 	}
 	return s.execute(ctx, commandSpec{
 		name:    "test-request",

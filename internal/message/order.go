@@ -30,6 +30,7 @@ const (
 	defaultNewClOrdIDPrefix          = "NEW"
 	defaultCancelClOrdIDPrefix       = "CXL"
 	defaultReplaceClOrdIDPrefix      = "RPL"
+	soh                              = "\x01"
 )
 
 const (
@@ -99,6 +100,8 @@ func BuildNewOrderSingle(request NewOrderSingleRequest) (*quickfix.Message, erro
 	clOrdID := strings.TrimSpace(request.ClOrdID)
 	if clOrdID == "" {
 		clOrdID = generatedClOrdID(defaultNewClOrdIDPrefix)
+	} else if err := validateFIXValue(clOrdID, "cl-ord-id"); err != nil {
+		return nil, err
 	}
 	symbol, err := requiredValue(request.Symbol, "symbol")
 	if err != nil {
@@ -152,6 +155,8 @@ func BuildOrderCancelRequest(request OrderCancelRequest) (*quickfix.Message, err
 	clOrdID := strings.TrimSpace(request.ClOrdID)
 	if clOrdID == "" {
 		clOrdID = generatedClOrdID(defaultCancelClOrdIDPrefix)
+	} else if err := validateFIXValue(clOrdID, "cl-ord-id"); err != nil {
+		return nil, err
 	}
 	symbol, err := requiredValue(request.Symbol, "symbol")
 	if err != nil {
@@ -165,7 +170,9 @@ func BuildOrderCancelRequest(request OrderCancelRequest) (*quickfix.Message, err
 	message := newOrderMessage(MsgTypeOrderCancelRequest, request.Now)
 	message.Body.SetString(tag(TagOrigClOrdID), origClOrdID)
 	message.Body.SetString(tag(TagClOrdID), clOrdID)
-	if orderID := strings.TrimSpace(request.OrderID); orderID != "" {
+	if orderID, err := optionalValue(request.OrderID, "order-id"); err != nil {
+		return nil, err
+	} else if orderID != "" {
 		message.Body.SetString(tag(TagOrderID), orderID)
 	}
 	message.Body.SetString(tag(TagSymbol), symbol)
@@ -184,6 +191,8 @@ func BuildOrderCancelReplaceRequest(request OrderCancelReplaceRequest) (*quickfi
 	clOrdID := strings.TrimSpace(request.ClOrdID)
 	if clOrdID == "" {
 		clOrdID = generatedClOrdID(defaultReplaceClOrdIDPrefix)
+	} else if err := validateFIXValue(clOrdID, "cl-ord-id"); err != nil {
+		return nil, err
 	}
 	symbol, err := requiredValue(request.Symbol, "symbol")
 	if err != nil {
@@ -213,7 +222,9 @@ func BuildOrderCancelReplaceRequest(request OrderCancelReplaceRequest) (*quickfi
 	message := newOrderMessage(MsgTypeOrderCancelReplaceRequest, request.Now)
 	message.Body.SetString(tag(TagOrigClOrdID), origClOrdID)
 	message.Body.SetString(tag(TagClOrdID), clOrdID)
-	if orderID := strings.TrimSpace(request.OrderID); orderID != "" {
+	if orderID, err := optionalValue(request.OrderID, "order-id"); err != nil {
+		return nil, err
+	} else if orderID != "" {
 		message.Body.SetString(tag(TagOrderID), orderID)
 	}
 	message.Body.SetString(tag(TagSymbol), symbol)
@@ -290,6 +301,9 @@ func ParseCustomTags(rawTags []string) ([]CustomTag, error) {
 		if isProtectedTag(tagValue) {
 			return nil, fmt.Errorf("参数 --tag 不允许覆盖协议字段 %d", tagValue)
 		}
+		if strings.Contains(value, soh) {
+			return nil, fmt.Errorf("参数 --tag 的 value 不能包含真实 SOH 分隔符")
+		}
 		tags = append(tags, CustomTag{Tag: tagValue, Value: value})
 	}
 	return tags, nil
@@ -314,11 +328,32 @@ func optionalPrice(value string, ordType string) (string, error) {
 }
 
 func requiredValue(value string, flag string) (string, error) {
-	value = strings.TrimSpace(value)
+	value, err := optionalValue(value, flag)
+	if err != nil {
+		return "", err
+	}
 	if value == "" {
 		return "", fmt.Errorf("缺少必填参数 --%s", flag)
 	}
 	return value, nil
+}
+
+func optionalValue(value string, flag string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if err := validateFIXValue(value, flag); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func validateFIXValue(value string, flag string) error {
+	if strings.Contains(value, soh) {
+		return fmt.Errorf("参数 --%s 不能包含真实 SOH 分隔符", flag)
+	}
+	return nil
 }
 
 func positiveDecimal(value string, flag string) (string, error) {
@@ -326,11 +361,30 @@ func positiveDecimal(value string, flag string) (string, error) {
 	if value == "" {
 		return "", fmt.Errorf("缺少必填参数 --%s", flag)
 	}
+	if !isDecimalLiteral(value) {
+		return "", fmt.Errorf("参数 --%s 必须是正数", flag)
+	}
 	decimal, ok := new(big.Rat).SetString(value)
 	if !ok || decimal.Sign() <= 0 {
 		return "", fmt.Errorf("参数 --%s 必须是正数", flag)
 	}
 	return value, nil
+}
+
+func isDecimalLiteral(value string) bool {
+	hasDigit := false
+	hasDot := false
+	for _, r := range value {
+		switch {
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case r == '.' && !hasDot:
+			hasDot = true
+		default:
+			return false
+		}
+	}
+	return hasDigit
 }
 
 func applyCustomTags(message *quickfix.Message, rawTags []string) error {

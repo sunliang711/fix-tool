@@ -192,6 +192,15 @@ func TestServiceRequiresTestRequestID(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsSOHInTestRequestID(t *testing.T) {
+	service := NewService(newFakeManager(), Options{Timeout: time.Second})
+
+	_, err := service.TestRequest(context.Background(), "ping"+soh+"35=D")
+	if !errors.Is(err, ErrTestRequestIDInvalid) {
+		t.Fatalf("TestRequest() error = %v, want ErrTestRequestIDInvalid", err)
+	}
+}
+
 type fakeManager struct {
 	events  chan fixsession.Event
 	session *fakeSession

@@ -70,6 +70,21 @@ func TestParseRawDetectsInvalidCheckSum(t *testing.T) {
 	}
 }
 
+func TestParseRawRequiresCheckSumLast(t *testing.T) {
+	raw := strings.TrimSpace(readMessage(t, "new_order_single.fix")) + "58=late|"
+
+	parsed, err := ParseRaw(raw)
+	if err != nil {
+		t.Fatalf("ParseRaw() error = %v", err)
+	}
+	if parsed.CheckSumValid {
+		t.Fatalf("CheckSumValid = true, want false")
+	}
+	if !strings.Contains(parsed.CheckSum.Detail, "last field") {
+		t.Fatalf("CheckSum detail = %q, want last field detail", parsed.CheckSum.Detail)
+	}
+}
+
 func TestParseRawRejectsInvalidField(t *testing.T) {
 	_, err := ParseRaw("8=FIX.4.4|bad-field|10=000|")
 	if err == nil {

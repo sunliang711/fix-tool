@@ -244,6 +244,70 @@ func TestCustomTags(t *testing.T) {
 			t.Fatalf("ParseCustomTags(%q) error = nil, want protected tag error", raw)
 		}
 	}
+
+	if _, err := ParseCustomTags([]string{"9001=hello" + soh + "35=D"}); err == nil {
+		t.Fatal("ParseCustomTags() error = nil, want SOH value error")
+	}
+}
+
+func TestBuildOrderRejectsSOHInFIXValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		build func() (*quickfix.Message, error)
+		want  string
+	}{
+		{
+			name: "cl-ord-id",
+			build: func() (*quickfix.Message, error) {
+				return BuildNewOrderSingle(NewOrderSingleRequest{
+					ClOrdID:  "C001" + soh + "35=D",
+					Symbol:   "AAPL",
+					Side:     "buy",
+					OrderQty: "100",
+					Price:    "10.25",
+				})
+			},
+			want: "cl-ord-id",
+		},
+		{
+			name: "symbol",
+			build: func() (*quickfix.Message, error) {
+				return BuildNewOrderSingle(NewOrderSingleRequest{
+					ClOrdID:  "C001",
+					Symbol:   "AAPL" + soh + "35=D",
+					Side:     "buy",
+					OrderQty: "100",
+					Price:    "10.25",
+				})
+			},
+			want: "symbol",
+		},
+		{
+			name: "order-id",
+			build: func() (*quickfix.Message, error) {
+				return BuildOrderCancelRequest(OrderCancelRequest{
+					OrigClOrdID: "C001",
+					ClOrdID:     "C002",
+					OrderID:     "O001" + soh + "35=D",
+					Symbol:      "AAPL",
+					Side:        "sell",
+				})
+			},
+			want: "order-id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.build()
+			if err == nil {
+				t.Fatal("build error = nil, want SOH value error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("build error = %v, want %q", err, tt.want)
+			}
+		})
+	}
 }
 
 func TestRequiredErrorsAreChinese(t *testing.T) {
@@ -287,6 +351,19 @@ func TestRequiredErrorsAreChinese(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "缺少必填参数 --side") {
 		t.Fatalf("missing replace side error = %v, want Chinese message", err)
+	}
+}
+
+func TestBuildOrderRejectsFractionLiteralQuantity(t *testing.T) {
+	_, err := BuildNewOrderSingle(NewOrderSingleRequest{
+		ClOrdID:  "C001",
+		Symbol:   "AAPL",
+		Side:     "buy",
+		OrderQty: "1/2",
+		Price:    "10.25",
+	})
+	if err == nil || !strings.Contains(err.Error(), "参数 --qty 必须是正数") {
+		t.Fatalf("BuildNewOrderSingle() error = %v, want quantity validation error", err)
 	}
 }
 

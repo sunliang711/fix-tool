@@ -137,6 +137,14 @@ func validateCheckSum(raw string, fields []positionedField) ValidationResult {
 	if !ok {
 		return ValidationResult{Present: false, Valid: false, Detail: "missing CheckSum"}
 	}
+	if checkSumField.next != len(raw) {
+		return ValidationResult{
+			Present:  true,
+			Valid:    false,
+			Expected: checkSumField.Value,
+			Detail:   "CheckSum must be last field",
+		}
+	}
 	if len(checkSumField.Value) != 3 {
 		return ValidationResult{
 			Present:  true,
