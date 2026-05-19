@@ -59,7 +59,7 @@ flowchart LR
 - CLI 层：负责命令、参数绑定、交互式 shell 输入解析，不承载业务逻辑。
 - Service 层：负责编排 profile、session、message builder、response matcher、renderer。
 - Adapter 层：封装 QuickFIX/Go、终端输出、文件导出等外部能力。
-- Domain 层：定义 Profile、MessageTemplate、CustomTag、Scenario、Trace 等核心模型。
+- Domain 层：定义 Profile、MessageTemplate、CustomFieldDef、LogonTag、Scenario、Trace 等核心模型。
 
 ## 4. 技术栈决策
 
@@ -136,14 +136,15 @@ Profile
 - data_dictionary
 - transport_data_dictionary
 - app_data_dictionary
-- custom_tags
+- custom_field_defs
+- logon_tags
 - output
 ```
 
-### 6.2 CustomTag
+### 6.2 CustomFieldDef
 
 ```text
-CustomTag
+CustomFieldDef
 - tag
 - name
 - type
@@ -153,7 +154,15 @@ CustomTag
 - description
 ```
 
-### 6.3 MessageTrace
+### 6.3 LogonTag
+
+```text
+LogonTag
+- tag
+- value
+```
+
+### 6.4 MessageTrace
 
 ```text
 MessageTrace
@@ -311,7 +320,8 @@ fix-tool run scenario.yaml
 |---|---|
 | Profile | 一套 FIX 连接配置 |
 | Dictionary | FIX XML 数据字典 |
-| CustomTag | 用户自定义字段定义 |
+| CustomFieldDef | 用户自定义字段定义 |
+| LogonTag | Logon 报文中发送的自定义字段 |
 | MsgType | FIX 消息类型，如 `A`、`0`、`D`、`F`、`G`、`8` |
 | Trace | 一条请求或响应的记录 |
 | Scenario | 多步骤联调脚本 |
@@ -343,4 +353,3 @@ fix-tool run scenario.yaml
 - 背景：开发和联调环境可能存在自签证书，但工具会处理交易认证信息。
 - 决定：默认开启 TLS 证书校验，允许 profile 中显式配置修改。
 - 后果：配置校验必须提示风险；生产 profile 不建议关闭证书校验。
-

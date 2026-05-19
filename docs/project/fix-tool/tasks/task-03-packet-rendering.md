@@ -7,10 +7,10 @@
 ## 技术方案
 
 - 在 `internal/trace` 定义 `MessageTrace` 和 recorder。
-- 在 `internal/dictionary` 加载标准字典和 custom tag。
+- 在 `internal/dictionary` 加载标准字典和 custom field definition。
 - 在 `internal/render` 实现 table、raw、json 输出。
 - 默认将 SOH 展示为 `|`。
-- 实现统一脱敏器，支持内置敏感 tag 和 custom tag。
+- 实现统一脱敏器，支持内置敏感 tag 和 custom field definition。
 
 ## 验收标准
 
@@ -37,5 +37,4 @@
 
 ## 风险
 
-- 自定义字典和标准字典冲突时需要明确优先级：custom tag 优先覆盖展示信息，但不修改标准 tag 的协议语义。
-
+- 自定义字典和标准字典冲突时需要明确优先级：custom field definition 优先覆盖展示信息，但不修改标准 tag 的协议语义。

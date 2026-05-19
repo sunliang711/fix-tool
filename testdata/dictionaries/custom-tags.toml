@@ -1,6 +1,6 @@
-# Custom tag overlay sample for local mock scenarios and documentation.
+# Custom field definition sample for local mock scenarios and documentation.
 
-[[profile.custom_tags]]
+[[profile.custom_field_defs]]
 tag = 9001
 name = "SessionToken"
 type = "STRING"
@@ -8,7 +8,7 @@ required = false
 sensitive = true
 description = "Placeholder sensitive token field for rendering tests"
 
-[[profile.custom_tags]]
+[[profile.custom_field_defs]]
 tag = 9002
 name = "Desk"
 type = "STRING"

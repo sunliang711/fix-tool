@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -29,14 +30,21 @@ func Load(opts LoadOptions) (*AppConfig, error) {
 	if err := bindKnownEnv(v); err != nil {
 		return nil, err
 	}
-	if err := mergeConfigFile(v, defaultFile(opts), false); err != nil {
+	var loadedFiles []string
+	if loadedFile, err := mergeConfigFile(v, defaultFile(opts), false); err != nil {
 		return nil, err
+	} else if loadedFile != "" {
+		loadedFiles = append(loadedFiles, loadedFile)
 	}
-	if err := mergeConfigFile(v, userConfigFile(opts), opts.ConfigFile != ""); err != nil {
+	if loadedFile, err := mergeConfigFile(v, userConfigFile(opts), opts.ConfigFile != ""); err != nil {
 		return nil, err
+	} else if loadedFile != "" {
+		loadedFiles = append(loadedFiles, loadedFile)
 	}
-	if err := mergeConfigFile(v, privateConfigFile(opts), opts.PrivateFile != ""); err != nil {
+	if loadedFile, err := mergeConfigFile(v, privateConfigFile(opts), opts.PrivateFile != ""); err != nil {
 		return nil, err
+	} else if loadedFile != "" {
+		loadedFiles = append(loadedFiles, loadedFile)
 	}
 	applyFlagOverrides(v, opts)
 
@@ -44,7 +52,22 @@ func Load(opts LoadOptions) (*AppConfig, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal configuration: %w", err)
 	}
+	cfg.LoadedFiles = loadedFiles
+	normalizeDeprecatedProfileKeys(&cfg, v)
 	return &cfg, nil
+}
+
+func normalizeDeprecatedProfileKeys(cfg *AppConfig, v *viper.Viper) {
+	if cfg == nil {
+		return
+	}
+	if v.IsSet("profile.custom_tags") {
+		cfg.DeprecatedKeys = append(cfg.DeprecatedKeys, "profile.custom_tags")
+		if len(cfg.Profile.CustomFieldDefs) == 0 {
+			cfg.Profile.CustomFieldDefs = cfg.Profile.CustomTags
+		}
+	}
+	cfg.Profile.CustomTags = nil
 }
 
 func setDefaults(v *viper.Viper) {
@@ -112,21 +135,29 @@ func knownKeys() []string {
 	}
 }
 
-func mergeConfigFile(v *viper.Viper, file string, required bool) error {
+func mergeConfigFile(v *viper.Viper, file string, required bool) (string, error) {
 	if file == "" {
-		return nil
+		return "", nil
 	}
 	if _, err := os.Stat(file); err != nil {
 		if errors.Is(err, os.ErrNotExist) && !required {
-			return nil
+			return "", nil
 		}
-		return fmt.Errorf("read configuration file %s: %w", file, err)
+		return "", fmt.Errorf("read configuration file %s: %w", file, err)
 	}
 	v.SetConfigFile(file)
 	if err := v.MergeInConfig(); err != nil {
-		return fmt.Errorf("merge configuration file %s: %w", file, err)
+		return "", fmt.Errorf("merge configuration file %s: %w", file, err)
 	}
-	return nil
+	return absolutePath(file), nil
+}
+
+func absolutePath(file string) string {
+	path, err := filepath.Abs(file)
+	if err != nil {
+		return filepath.Clean(file)
+	}
+	return path
 }
 
 func applyFlagOverrides(v *viper.Viper, opts LoadOptions) {

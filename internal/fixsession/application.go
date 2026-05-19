@@ -24,6 +24,7 @@ type quickFIXApplication struct {
 	events        chan Event
 	username      string
 	password      string
+	logonTags     []config.LogonTagConfig
 	sensitiveTags map[quickfix.Tag]struct{}
 }
 
@@ -32,21 +33,26 @@ func NewApplication(profile config.ProfileConfig) Application {
 }
 
 func newApplication(profile config.ProfileConfig, events chan Event) *quickFIXApplication {
-	sensitiveTags := map[quickfix.Tag]struct{}{
-		tagUsername: {},
-		tagPassword: {},
-	}
-	for _, customTag := range profile.CustomTags {
-		if customTag.Sensitive {
-			sensitiveTags[quickfix.Tag(customTag.Tag)] = struct{}{}
-		}
-	}
 	return &quickFIXApplication{
 		events:        events,
 		username:      profile.Username,
 		password:      profile.Password,
-		sensitiveTags: sensitiveTags,
+		logonTags:     profile.LogonTags,
+		sensitiveTags: sensitiveTagsFromProfile(profile),
 	}
+}
+
+func sensitiveTagsFromProfile(profile config.ProfileConfig) map[quickfix.Tag]struct{} {
+	sensitiveTags := map[quickfix.Tag]struct{}{
+		tagUsername: {},
+		tagPassword: {},
+	}
+	for _, customFieldDef := range profile.CustomFieldDefs {
+		if customFieldDef.Sensitive {
+			sensitiveTags[quickfix.Tag(customFieldDef.Tag)] = struct{}{}
+		}
+	}
+	return sensitiveTags
 }
 
 func (a *quickFIXApplication) Events() <-chan Event {
@@ -67,6 +73,9 @@ func (a *quickFIXApplication) OnLogout(sessionID quickfix.SessionID) {
 
 func (a *quickFIXApplication) ToAdmin(message *quickfix.Message, sessionID quickfix.SessionID) {
 	if msgType(message) == msgTypeLogon {
+		for _, logonTag := range a.logonTags {
+			message.Body.SetString(quickfix.Tag(logonTag.Tag), logonTag.Value)
+		}
 		if a.username != "" {
 			message.Body.SetString(tagUsername, a.username)
 		}

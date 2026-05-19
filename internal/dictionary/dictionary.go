@@ -11,7 +11,7 @@ const (
 	sourceCustom   = "custom"
 )
 
-type CustomTag struct {
+type CustomFieldDef struct {
 	Tag         int
 	Name        string
 	Type        string
@@ -36,32 +36,32 @@ type Dictionary struct {
 	fields map[int]FieldDefinition
 }
 
-func New(customTags []CustomTag) *Dictionary {
+func New(customFieldDefs []CustomFieldDef) *Dictionary {
 	fields := standardFields()
 	for tag, field := range fields {
 		field.Source = sourceStandard
 		fields[tag] = field
 	}
-	for _, customTag := range customTags {
-		mergeCustomTag(fields, customTag)
+	for _, customFieldDef := range customFieldDefs {
+		mergeCustomFieldDef(fields, customFieldDef)
 	}
 	return &Dictionary{fields: fields}
 }
 
-func NewFromConfig(customTags []config.CustomTagConfig) *Dictionary {
-	tags := make([]CustomTag, 0, len(customTags))
-	for _, customTag := range customTags {
-		tags = append(tags, CustomTag{
-			Tag:         customTag.Tag,
-			Name:        customTag.Name,
-			Type:        customTag.Type,
-			Required:    customTag.Required,
-			Sensitive:   customTag.Sensitive,
-			Enums:       copyEnums(customTag.Enums),
-			Description: customTag.Description,
+func NewFromConfig(customFieldDefs []config.CustomFieldDefConfig) *Dictionary {
+	defs := make([]CustomFieldDef, 0, len(customFieldDefs))
+	for _, customFieldDef := range customFieldDefs {
+		defs = append(defs, CustomFieldDef{
+			Tag:         customFieldDef.Tag,
+			Name:        customFieldDef.Name,
+			Type:        customFieldDef.Type,
+			Required:    customFieldDef.Required,
+			Sensitive:   customFieldDef.Sensitive,
+			Enums:       copyEnums(customFieldDef.Enums),
+			Description: customFieldDef.Description,
 		})
 	}
-	return New(tags)
+	return New(defs)
 }
 
 func Standard() *Dictionary {
@@ -97,37 +97,37 @@ func (d *Dictionary) IsSensitive(tag int) bool {
 	return field.Sensitive
 }
 
-func mergeCustomTag(fields map[int]FieldDefinition, customTag CustomTag) {
-	if customTag.Tag <= 0 {
+func mergeCustomFieldDef(fields map[int]FieldDefinition, customFieldDef CustomFieldDef) {
+	if customFieldDef.Tag <= 0 {
 		return
 	}
-	customTag.Sensitive = customTag.Sensitive || isSensitiveName(customTag.Name)
-	existing, ok := fields[customTag.Tag]
+	customFieldDef.Sensitive = customFieldDef.Sensitive || isSensitiveName(customFieldDef.Name)
+	existing, ok := fields[customFieldDef.Tag]
 	if ok {
-		if customTag.Name != "" {
-			existing.Name = customTag.Name
+		if customFieldDef.Name != "" {
+			existing.Name = customFieldDef.Name
 		}
-		if customTag.Description != "" {
-			existing.Description = customTag.Description
+		if customFieldDef.Description != "" {
+			existing.Description = customFieldDef.Description
 		}
-		if customTag.Required {
+		if customFieldDef.Required {
 			existing.Required = true
 		}
-		if customTag.Sensitive {
+		if customFieldDef.Sensitive {
 			existing.Sensitive = true
 		}
 		existing.Source = sourceStandard
-		fields[customTag.Tag] = existing
+		fields[customFieldDef.Tag] = existing
 		return
 	}
-	fields[customTag.Tag] = FieldDefinition{
-		Tag:         customTag.Tag,
-		Name:        customTag.Name,
-		Type:        customTag.Type,
-		Required:    customTag.Required,
-		Sensitive:   customTag.Sensitive,
-		Enums:       copyEnums(customTag.Enums),
-		Description: customTag.Description,
+	fields[customFieldDef.Tag] = FieldDefinition{
+		Tag:         customFieldDef.Tag,
+		Name:        customFieldDef.Name,
+		Type:        customFieldDef.Type,
+		Required:    customFieldDef.Required,
+		Sensitive:   customFieldDef.Sensitive,
+		Enums:       copyEnums(customFieldDef.Enums),
+		Description: customFieldDef.Description,
 		Source:      sourceCustom,
 	}
 }

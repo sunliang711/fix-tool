@@ -15,14 +15,21 @@ import (
 )
 
 const (
-	msgTypeHeartbeat   = "0"
-	msgTypeTestRequest = "1"
-	msgTypeLogout      = "5"
-	msgTypeLogon       = "A"
+	msgTypeHeartbeat      = "0"
+	msgTypeTestRequest    = "1"
+	msgTypeReject         = "3"
+	msgTypeLogout         = "5"
+	msgTypeLogon          = "A"
+	msgTypeBusinessReject = "j"
 
-	tagMsgType   = quickfix.Tag(35)
-	tagTestReqID = quickfix.Tag(112)
-	soh          = "\x01"
+	tagMsgType              = quickfix.Tag(35)
+	tagRefSeqNum            = quickfix.Tag(45)
+	tagText                 = quickfix.Tag(58)
+	tagTestReqID            = quickfix.Tag(112)
+	tagSessionRejectReason  = quickfix.Tag(373)
+	tagBusinessRejectRefID  = quickfix.Tag(379)
+	tagBusinessRejectReason = quickfix.Tag(380)
+	soh                     = "\x01"
 
 	DefaultTimeout     = 30 * time.Second
 	defaultStopTimeout = 5 * time.Second
@@ -32,9 +39,52 @@ var (
 	ErrTimeout               = errors.New("admin command timeout")
 	ErrSessionUnavailable    = errors.New("fix session unavailable")
 	ErrEventStreamClosed     = errors.New("fix event stream closed")
+	ErrLogonRejected         = errors.New("logon rejected by counterparty")
+	ErrLogonEnded            = errors.New("fix session ended before logon")
 	ErrTestRequestIDRequired = errors.New("test request id is required")
 	ErrTestRequestIDInvalid  = errors.New("test request id cannot contain SOH delimiter")
 )
+
+type LogonDiagnostics struct {
+	Timeout                     time.Duration
+	Session                     string
+	LogonSent                   bool
+	LogonResponseSeen           bool
+	LastEvent                   string
+	LastAdminMsgType            string
+	LastAdminText               string
+	LastAdminRefSeqNum          string
+	LastAdminSessionRejectCode  string
+	LastAdminBusinessRejectID   string
+	LastAdminBusinessRejectCode string
+}
+
+type LogonError struct {
+	Err         error
+	Diagnostics LogonDiagnostics
+}
+
+func (e *LogonError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *LogonError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func LogonDiagnosticsFromError(err error) (LogonDiagnostics, bool) {
+	var logonErr *LogonError
+	if errors.As(err, &logonErr) {
+		return logonErr.Diagnostics, true
+	}
+	return LogonDiagnostics{}, false
+}
 
 type Options struct {
 	Timeout      time.Duration
@@ -219,32 +269,98 @@ func (s *Service) waitLogon(ctx context.Context, collectTrace bool) (Result, err
 	profile := s.profileName()
 	var result Result
 	var requestTime time.Time
+	diagnostics := s.newLogonDiagnostics()
 
 	for {
-		event, err := nextEvent(ctx, s.manager.Events(), "logon")
-		if err != nil {
-			return Result{}, err
-		}
-		if collectTrace && event.Type == fixsession.EventToAdmin && event.MsgType == msgTypeLogon {
-			requestTime = eventTime(event)
-			request, err := traceFromEvent(traceID, profile, trace.DirectionOutbound, event, requestTime, time.Time{})
-			if err != nil {
-				return Result{}, err
+		select {
+		case event, ok := <-s.manager.Events():
+			if !ok {
+				return result, ErrEventStreamClosed
 			}
-			result.Request = &request
-			continue
-		}
-		if collectTrace && event.Type == fixsession.EventFromAdmin && event.MsgType == msgTypeLogon {
-			response, err := traceFromEvent(traceID, profile, trace.DirectionInbound, event, requestTime, eventTime(event))
-			if err != nil {
-				return Result{}, err
+			diagnostics.observe(event)
+			if collectTrace && event.Type == fixsession.EventToAdmin && event.MsgType == msgTypeLogon {
+				requestTime = eventTime(event)
+				request, err := traceFromEvent(traceID, profile, trace.DirectionOutbound, event, requestTime, time.Time{})
+				if err != nil {
+					return Result{}, err
+				}
+				result.Request = &request
+				continue
 			}
-			result.Response = &response
-			continue
+			if collectTrace && event.Type == fixsession.EventFromAdmin && event.MsgType == msgTypeLogon {
+				response, err := traceFromEvent(traceID, profile, trace.DirectionInbound, event, requestTime, eventTime(event))
+				if err != nil {
+					return Result{}, err
+				}
+				result.Response = &response
+				continue
+			}
+			if isLogonRejectEvent(event) {
+				return result, newLogonError(fmt.Errorf("logon rejected by counterparty: %w", ErrLogonRejected), diagnostics)
+			}
+			if event.Type == fixsession.EventLogout {
+				return result, newLogonError(fmt.Errorf("logon ended before success: %w", ErrLogonEnded), diagnostics)
+			}
+			if event.Type == fixsession.EventLogon {
+				return result, nil
+			}
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return result, newLogonError(fmt.Errorf("logon: %w", ErrTimeout), diagnostics)
+			}
+			return result, fmt.Errorf("logon canceled: %w", ctx.Err())
 		}
-		if event.Type == fixsession.EventLogon {
-			return result, nil
-		}
+	}
+}
+
+func (s *Service) newLogonDiagnostics() LogonDiagnostics {
+	diagnostics := LogonDiagnostics{
+		Timeout: s.timeout,
+	}
+	if session, err := s.session(); err == nil && session != nil {
+		diagnostics.Session = session.ID().String()
+	}
+	return diagnostics
+}
+
+func newLogonError(err error, diagnostics LogonDiagnostics) *LogonError {
+	return &LogonError{
+		Err:         err,
+		Diagnostics: diagnostics,
+	}
+}
+
+func (d *LogonDiagnostics) observe(event fixsession.Event) {
+	if d == nil {
+		return
+	}
+	d.LastEvent = string(event.Type)
+	if event.Type != fixsession.EventToAdmin && event.Type != fixsession.EventFromAdmin {
+		return
+	}
+	d.LastAdminMsgType = event.MsgType
+	if event.Type == fixsession.EventToAdmin && event.MsgType == msgTypeLogon {
+		d.LogonSent = true
+	}
+	if event.Type == fixsession.EventFromAdmin && event.MsgType == msgTypeLogon {
+		d.LogonResponseSeen = true
+	}
+	d.LastAdminText = eventValue(event, int(tagText))
+	d.LastAdminRefSeqNum = eventValue(event, int(tagRefSeqNum))
+	d.LastAdminSessionRejectCode = eventValue(event, int(tagSessionRejectReason))
+	d.LastAdminBusinessRejectID = eventValue(event, int(tagBusinessRejectRefID))
+	d.LastAdminBusinessRejectCode = eventValue(event, int(tagBusinessRejectReason))
+}
+
+func isLogonRejectEvent(event fixsession.Event) bool {
+	if event.Type != fixsession.EventFromAdmin {
+		return false
+	}
+	switch event.MsgType {
+	case msgTypeLogout, msgTypeReject, msgTypeBusinessReject:
+		return true
+	default:
+		return false
 	}
 }
 

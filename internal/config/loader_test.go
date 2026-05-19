@@ -82,6 +82,15 @@ target_comp_id = "PRIVATE"
 	if cfg.Output.Format != "json" {
 		t.Fatalf("output format = %q, want %q", cfg.Output.Format, "json")
 	}
+	wantLoadedFiles := []string{defaultFile, configFile, privateFile}
+	if len(cfg.LoadedFiles) != len(wantLoadedFiles) {
+		t.Fatalf("loaded files = %#v, want %#v", cfg.LoadedFiles, wantLoadedFiles)
+	}
+	for i, want := range wantLoadedFiles {
+		if cfg.LoadedFiles[i] != want {
+			t.Fatalf("loaded files[%d] = %q, want %q", i, cfg.LoadedFiles[i], want)
+		}
+	}
 }
 
 func TestLoadFailsWhenExplicitConfigFileMissing(t *testing.T) {
@@ -93,25 +102,60 @@ func TestLoadFailsWhenExplicitConfigFileMissing(t *testing.T) {
 	}
 }
 
-func TestLoadCustomTagEnums(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "custom-tags.toml")
+func TestLoadCustomFieldDefEnums(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom-field-defs.toml")
 	writeFile(t, path, `
-[[profile.custom_tags]]
+[[profile.custom_field_defs]]
 tag = 9002
 name = "Desk"
 type = "STRING"
 enums = { ALPHA = "Alpha desk" }
+
+[[profile.logon_tags]]
+tag = 9002
+value = "ALPHA"
+
+[[profile.logon_tags]]
+tag = 9003
+value = "BETA"
 `)
 
 	cfg, err := Load(LoadOptions{ConfigFile: path})
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if len(cfg.Profile.CustomTags) != 1 {
-		t.Fatalf("custom tags = %d, want 1", len(cfg.Profile.CustomTags))
+	if len(cfg.Profile.CustomFieldDefs) != 1 {
+		t.Fatalf("custom field defs = %d, want 1", len(cfg.Profile.CustomFieldDefs))
 	}
-	if cfg.Profile.CustomTags[0].Enums["alpha"] != "Alpha desk" {
-		t.Fatalf("custom tag enums = %#v, want alpha", cfg.Profile.CustomTags[0].Enums)
+	if cfg.Profile.CustomFieldDefs[0].Enums["alpha"] != "Alpha desk" {
+		t.Fatalf("custom field def enums = %#v, want alpha", cfg.Profile.CustomFieldDefs[0].Enums)
+	}
+	if len(cfg.Profile.LogonTags) != 2 || cfg.Profile.LogonTags[0].Value != "ALPHA" || cfg.Profile.LogonTags[1].Value != "BETA" {
+		t.Fatalf("logon tags = %#v, want ALPHA and BETA", cfg.Profile.LogonTags)
+	}
+}
+
+func TestLoadDeprecatedCustomTagsFallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom-tags.toml")
+	writeFile(t, path, `
+[[profile.custom_tags]]
+tag = 9002
+name = "Desk"
+type = "STRING"
+`)
+
+	cfg, err := Load(LoadOptions{ConfigFile: path})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Profile.CustomFieldDefs) != 1 {
+		t.Fatalf("custom field defs = %d, want fallback from custom_tags", len(cfg.Profile.CustomFieldDefs))
+	}
+	if len(cfg.Profile.CustomTags) != 0 {
+		t.Fatalf("custom tags = %#v, want cleared deprecated field", cfg.Profile.CustomTags)
+	}
+	if len(cfg.DeprecatedKeys) != 1 || cfg.DeprecatedKeys[0] != "profile.custom_tags" {
+		t.Fatalf("deprecated keys = %#v, want profile.custom_tags", cfg.DeprecatedKeys)
 	}
 }
 

@@ -121,6 +121,7 @@ func newConfigCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 				logger.Error().Err(err).Msg("failed to configure logger")
 				return err
 			}
+			logLoadedConfigFiles(configuredLogger, cfg)
 			if cfg.Profile.TLS.Enabled && cfg.Profile.TLS.InsecureSkipVerify {
 				configuredLogger.Warn().Msg("tls certificate verification is disabled")
 			}
@@ -130,6 +131,18 @@ func newConfigCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 		},
 	})
 	return configCmd
+}
+
+func logLoadedConfigFiles(logger zerolog.Logger, cfg *config.AppConfig) {
+	if cfg == nil {
+		return
+	}
+	logger.Info().Strs("config_files", cfg.LoadedFiles).Msg("configuration files loaded")
+	for _, key := range cfg.DeprecatedKeys {
+		if key == "profile.custom_tags" {
+			logger.Warn().Str("deprecated_key", key).Str("replacement", "profile.custom_field_defs").Msg("configuration key is deprecated")
+		}
+	}
 }
 
 func newConfigExampleCommand() *cobra.Command {

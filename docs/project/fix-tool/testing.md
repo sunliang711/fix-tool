@@ -47,7 +47,7 @@
 - 样例场景：`testdata/scenarios/mock-acceptor-basic.yaml`
 - 既有订单生命周期场景：`testdata/scenarios/order-lifecycle.yaml`
 
-样例配置使用空用户名和空密码，仅包含本地 mock 连接参数，不包含真实账号、密码、Token 或证书。手工运行样例时，可按本地 mock acceptor 实际监听端口调整 `port`。字典样例只演示 custom tag overlay 的字段名、类型、枚举和敏感标记，不代表某个真实交易对手方的数据字典。
+样例配置使用空用户名和空密码，仅包含本地 mock 连接参数，不包含真实账号、密码、Token 或证书。手工运行样例时，可按本地 mock acceptor 实际监听端口调整 `port`。字典样例只演示 custom field definition 的字段名、类型、枚举和敏感标记，不代表某个真实交易对手方的数据字典。
 
 ## 验证命令
 

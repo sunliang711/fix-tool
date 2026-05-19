@@ -118,6 +118,7 @@ func (r orderRunner) run(
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
+	logLoadedConfigFiles(configuredLogger, cfg)
 	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
@@ -133,7 +134,7 @@ func (r orderRunner) run(
 }
 
 func renderOrderResult(out io.Writer, cfg *config.AppConfig, result order.Result) error {
-	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomTags), render.Options{
+	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomFieldDefs), render.Options{
 		Format:        render.Format(cfg.Output.Format),
 		RawDelimiter:  cfg.Output.RawDelimiter,
 		ShowSensitive: !cfg.Output.RedactSensitive,

@@ -24,9 +24,9 @@
 | 02 QuickFIX/Go session adapter 与 profile 加载 | 已完成 | 已完成 QuickFIX/Go initiator 封装、profile settings 映射、事件捕获、Fx 生命周期和测试 |
 | 03 报文捕获、解析、字段名映射、脱敏渲染 | 已完成 | 已完成 trace、raw 解析、字段字典、BodyLength/CheckSum 校验、脱敏、table/json/raw 渲染和测试 |
 | 04 admin 命令 | 已完成 | 已完成 logon、logout、heartbeat、test-request 命令、admin service、发送/等待/超时逻辑和测试 |
-| 05 order 命令 | 已完成 | 已完成 order new/cancel/replace 命令、订单消息构造、响应匹配、custom tag、trace 输出和测试 |
+| 05 order 命令 | 已完成 | 已完成 order new/cancel/replace 命令、订单消息构造、响应匹配、自定义字段、trace 输出和测试 |
 | 06 交互式 shell | 已完成 | 已完成 shell 命令、有限命令解析、共享 session、trace list、错误不中断、退出关闭和测试 |
-| 07 raw send、inspect raw、自定义 tag overlay | 已完成 | 已完成 raw builder、raw send、inspect raw、custom tag overlay、scenario raw 接入和测试 |
+| 07 raw send、inspect raw、自定义字段定义 overlay | 已完成 | 已完成 raw builder、raw send、inspect raw、自定义字段定义 overlay、scenario raw 接入和测试 |
 | 08 scenario runner 与断言 | 已完成 | 已完成 YAML scenario runner、顺序执行、基础断言、JSON 结果导出、样例场景和测试；raw action 已接入任务 07 raw service |
 | 09 测试、mock acceptor、样例配置 | 已完成 | 已完成测试覆盖矩阵、mock acceptor、集成测试、安全样例配置、字典样例、场景样例和测试说明 |
 | 10 打包发布与使用文档 | 已完成 | 已完成版本信息、version 命令、Makefile 发布包、CI、用户指南、安装说明、FAQ 和交付文档 |

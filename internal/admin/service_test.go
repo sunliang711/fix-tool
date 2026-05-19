@@ -153,6 +153,67 @@ func TestServiceReturnsTimeout(t *testing.T) {
 	}
 }
 
+func TestServiceLogonTimeoutIncludesDiagnostics(t *testing.T) {
+	manager := newFakeManager()
+	manager.onStart = func() {
+		manager.emit(fixsession.Event{Type: fixsession.EventToAdmin, MsgType: msgTypeLogon, Message: rawAdmin(msgTypeLogon, "")})
+	}
+	service := NewService(manager, Options{Timeout: 20 * time.Millisecond})
+
+	_, err := service.Logon(context.Background())
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("Logon() error = %v, want ErrTimeout", err)
+	}
+	diagnostics, ok := LogonDiagnosticsFromError(err)
+	if !ok {
+		t.Fatalf("Logon() error = %T, want diagnostics", err)
+	}
+	if !diagnostics.LogonSent {
+		t.Fatalf("diagnostics.LogonSent = false, want true")
+	}
+	if diagnostics.LogonResponseSeen {
+		t.Fatalf("diagnostics.LogonResponseSeen = true, want false")
+	}
+	if diagnostics.LastEvent != string(fixsession.EventToAdmin) {
+		t.Fatalf("diagnostics.LastEvent = %q, want %q", diagnostics.LastEvent, fixsession.EventToAdmin)
+	}
+	if diagnostics.LastAdminMsgType != msgTypeLogon {
+		t.Fatalf("diagnostics.LastAdminMsgType = %q, want %q", diagnostics.LastAdminMsgType, msgTypeLogon)
+	}
+	if diagnostics.Session != manager.session.id.String() {
+		t.Fatalf("diagnostics.Session = %q, want %q", diagnostics.Session, manager.session.id.String())
+	}
+}
+
+func TestServiceLogonRejectFailsEarly(t *testing.T) {
+	manager := newFakeManager()
+	manager.onStart = func() {
+		manager.emit(fixsession.Event{Type: fixsession.EventToAdmin, MsgType: msgTypeLogon, Message: rawAdmin(msgTypeLogon, "")})
+		manager.emit(fixsession.Event{Type: fixsession.EventFromAdmin, MsgType: msgTypeLogout, Message: rawAdminWithFields(msgTypeLogout, map[quickfix.Tag]string{
+			tagText: "Invalid SenderCompID",
+		})})
+	}
+	service := NewService(manager, Options{Timeout: time.Second})
+
+	_, err := service.Logon(context.Background())
+	if !errors.Is(err, ErrLogonRejected) {
+		t.Fatalf("Logon() error = %v, want ErrLogonRejected", err)
+	}
+	diagnostics, ok := LogonDiagnosticsFromError(err)
+	if !ok {
+		t.Fatalf("Logon() error = %T, want diagnostics", err)
+	}
+	if diagnostics.LastAdminMsgType != msgTypeLogout {
+		t.Fatalf("diagnostics.LastAdminMsgType = %q, want %q", diagnostics.LastAdminMsgType, msgTypeLogout)
+	}
+	if diagnostics.LastAdminText != "Invalid SenderCompID" {
+		t.Fatalf("diagnostics.LastAdminText = %q, want reject text", diagnostics.LastAdminText)
+	}
+	if manager.stops != 1 {
+		t.Fatalf("stops = %d, want 1", manager.stops)
+	}
+}
+
 func TestServiceKeepSessionReusesLoggedOnState(t *testing.T) {
 	manager := newFakeManager()
 	manager.onStart = func() {
@@ -284,6 +345,14 @@ func (s *fakeSession) Send(message *quickfix.Message) error {
 }
 
 func rawAdmin(msgType string, testReqID string) string {
+	fields := map[quickfix.Tag]string{}
+	if testReqID != "" {
+		fields[tagTestReqID] = testReqID
+	}
+	return rawAdminWithFields(msgType, fields)
+}
+
+func rawAdminWithFields(msgType string, fields map[quickfix.Tag]string) string {
 	message := quickfix.NewMessage()
 	message.Header.SetString(quickfix.Tag(8), "FIX.4.4")
 	message.Header.SetString(tagMsgType, msgType)
@@ -291,8 +360,8 @@ func rawAdmin(msgType string, testReqID string) string {
 	message.Header.SetString(quickfix.Tag(49), "SENDER")
 	message.Header.SetString(quickfix.Tag(52), time.Now().UTC().Format("20060102-15:04:05.000"))
 	message.Header.SetString(quickfix.Tag(56), "TARGET")
-	if testReqID != "" {
-		message.Body.SetString(tagTestReqID, testReqID)
+	for tag, value := range fields {
+		message.Body.SetString(tag, value)
 	}
 	return message.String()
 }

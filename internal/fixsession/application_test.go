@@ -14,8 +14,12 @@ func TestApplicationCapturesCallbacks(t *testing.T) {
 	profile := validProfile()
 	profile.Username = "account"
 	profile.Password = "secret"
-	profile.CustomTags = []config.CustomTagConfig{
+	profile.CustomFieldDefs = []config.CustomFieldDefConfig{
 		{Tag: 9001, Name: "Token", Type: "STRING", Sensitive: true},
+	}
+	profile.LogonTags = []config.LogonTagConfig{
+		{Tag: 9002, Value: "ALPHA"},
+		{Tag: 9003, Value: "BETA"},
 	}
 	app := NewApplication(profile)
 	sessionID := quickfix.SessionID{
@@ -30,7 +34,7 @@ func TestApplicationCapturesCallbacks(t *testing.T) {
 	app.ToAdmin(logon, sessionID)
 	event := assertCapturedEvent(t, app.Events(), EventToAdmin)
 	if strings.Contains(event.Message, "token-value") {
-		t.Fatalf("event message contains sensitive custom tag: %q", event.Message)
+		t.Fatalf("event message contains sensitive custom field def: %q", event.Message)
 	}
 
 	username, err := logon.Body.GetString(tagUsername)
@@ -46,6 +50,20 @@ func TestApplicationCapturesCallbacks(t *testing.T) {
 	}
 	if password != "secret" {
 		t.Fatalf("password = %q, want %q", password, "secret")
+	}
+	logonTag, err := logon.Body.GetString(quickfix.Tag(9002))
+	if err != nil {
+		t.Fatalf("logon tag field error = %v", err)
+	}
+	if logonTag != "ALPHA" {
+		t.Fatalf("logon tag = %q, want ALPHA", logonTag)
+	}
+	secondLogonTag, err := logon.Body.GetString(quickfix.Tag(9003))
+	if err != nil {
+		t.Fatalf("second logon tag field error = %v", err)
+	}
+	if secondLogonTag != "BETA" {
+		t.Fatalf("second logon tag = %q, want BETA", secondLogonTag)
 	}
 
 	app.OnLogon(sessionID)

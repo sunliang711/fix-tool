@@ -114,5 +114,6 @@ testdata/
 - SOH 字符在终端展示中默认渲染为 `|`，但 raw 发送时必须使用真实 SOH。
 - 所有请求响应记录统一称为 `trace`。
 - 所有连接配置统一称为 `profile`。
-- 所有用户可扩展字段统一称为 `custom tag`。
+- 自定义字段元数据统一称为 `custom field definition`，配置键使用 `profile.custom_field_defs`。
+- 需要随 Logon 发送的自定义 tag 统一放在 `profile.logon_tags`。
 - P0 MsgType 模板必须优先保持参数稳定，后续新增字段通过 `--tag key=value` 补充。

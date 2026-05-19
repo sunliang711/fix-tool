@@ -97,6 +97,7 @@ func (r rawRunner) runSend(ctx context.Context, out io.Writer, errOut io.Writer,
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
+	logLoadedConfigFiles(configuredLogger, cfg)
 	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
@@ -179,7 +180,7 @@ func renderRawTrace(out io.Writer, renderer *render.Renderer, format render.Form
 }
 
 func newRenderer(cfg *config.AppConfig) *render.Renderer {
-	return render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomTags), render.Options{
+	return render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomFieldDefs), render.Options{
 		Format:        render.Format(cfg.Output.Format),
 		RawDelimiter:  cfg.Output.RawDelimiter,
 		ShowSensitive: !cfg.Output.RedactSensitive,

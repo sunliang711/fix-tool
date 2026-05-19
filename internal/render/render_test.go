@@ -116,7 +116,7 @@ func newTrace(t *testing.T) trace.MessageTrace {
 }
 
 func newTestRenderer(showSensitive bool) *Renderer {
-	return NewRenderer(dictionary.New([]dictionary.CustomTag{
+	return NewRenderer(dictionary.New([]dictionary.CustomFieldDef{
 		{Tag: 9001, Name: "SessionToken", Type: "STRING", Sensitive: true},
 	}), Options{RawDelimiter: "|", ShowSensitive: showSensitive})
 }

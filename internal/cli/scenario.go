@@ -73,6 +73,7 @@ func (r scenarioRunner) run(cmd *cobra.Command, scenarioFile string, runFlags *s
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
+	logLoadedConfigFiles(configuredLogger, cfg)
 	loadedScenario, err := scenario.Load(scenarioFile)
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to load scenario")
@@ -137,7 +138,7 @@ func renderScenarioResult(ctx context.Context, out io.Writer, cfg *config.AppCon
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomTags), render.Options{
+	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomFieldDefs), render.Options{
 		Format:        render.Format(cfg.Output.Format),
 		RawDelimiter:  cfg.Output.RawDelimiter,
 		ShowSensitive: !cfg.Output.RedactSensitive,

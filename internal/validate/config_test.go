@@ -40,15 +40,15 @@ func TestAppConfigRejectsInvalidHeartbeatInterval(t *testing.T) {
 	}
 }
 
-func TestAppConfigRejectsInvalidCustomTags(t *testing.T) {
+func TestAppConfigRejectsInvalidCustomFieldDefs(t *testing.T) {
 	tests := []struct {
-		name      string
-		customTag config.CustomTagConfig
-		want      string
+		name           string
+		customFieldDef config.CustomFieldDefConfig
+		want           string
 	}{
 		{
 			name: "invalid-tag",
-			customTag: config.CustomTagConfig{
+			customFieldDef: config.CustomFieldDefConfig{
 				Name: "Desk",
 				Type: "STRING",
 			},
@@ -56,7 +56,7 @@ func TestAppConfigRejectsInvalidCustomTags(t *testing.T) {
 		},
 		{
 			name: "missing-name",
-			customTag: config.CustomTagConfig{
+			customFieldDef: config.CustomFieldDefConfig{
 				Tag:  9001,
 				Type: "STRING",
 			},
@@ -64,7 +64,7 @@ func TestAppConfigRejectsInvalidCustomTags(t *testing.T) {
 		},
 		{
 			name: "missing-type",
-			customTag: config.CustomTagConfig{
+			customFieldDef: config.CustomFieldDefConfig{
 				Tag:  9001,
 				Name: "Desk",
 			},
@@ -75,10 +75,56 @@ func TestAppConfigRejectsInvalidCustomTags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
-			cfg.Profile.CustomTags = []config.CustomTagConfig{tt.customTag}
+			cfg.Profile.CustomFieldDefs = []config.CustomFieldDefConfig{tt.customFieldDef}
 			err := validate.AppConfig(cfg)
 			if err == nil {
-				t.Fatal("AppConfig() error = nil, want custom tag validation error")
+				t.Fatal("AppConfig() error = nil, want custom field def validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("AppConfig() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestAppConfigRejectsInvalidLogonTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		logonTag config.LogonTagConfig
+		want     string
+	}{
+		{
+			name: "invalid-tag",
+			logonTag: config.LogonTagConfig{
+				Value: "ALPHA",
+			},
+			want: "tag must be positive",
+		},
+		{
+			name: "protected-tag",
+			logonTag: config.LogonTagConfig{
+				Tag:   553,
+				Value: "account",
+			},
+			want: "cannot override",
+		},
+		{
+			name: "soh-value",
+			logonTag: config.LogonTagConfig{
+				Tag:   9001,
+				Value: "hello\x0135=A",
+			},
+			want: "SOH delimiter",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Profile.LogonTags = []config.LogonTagConfig{tt.logonTag}
+			err := validate.AppConfig(cfg)
+			if err == nil {
+				t.Fatal("AppConfig() error = nil, want logon tag validation error")
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("AppConfig() error = %v, want %q", err, tt.want)

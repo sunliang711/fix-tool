@@ -38,7 +38,7 @@ func NewManager(profile config.ProfileConfig, logger zerolog.Logger) (*QuickFIXM
 		return nil, err
 	}
 	app := newApplication(profile, make(chan Event, defaultEventBuffer))
-	initiator, err := quickfix.NewInitiator(app, quickfix.NewMemoryStoreFactory(), settings, quickfix.NewNullLogFactory())
+	initiator, err := quickfix.NewInitiator(app, quickfix.NewMemoryStoreFactory(), settings, newZerologLogFactory(logger, profile))
 	if err != nil {
 		return nil, fmt.Errorf("create quickfix initiator: %w", err)
 	}

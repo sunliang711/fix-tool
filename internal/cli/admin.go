@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -103,6 +104,7 @@ func (r adminRunner) run(
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
+	logLoadedConfigFiles(configuredLogger, cfg)
 	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
@@ -111,14 +113,59 @@ func (r adminRunner) run(
 	service := admin.NewService(manager, admin.Options{})
 	result, err := operation(ctx, service)
 	if err != nil {
-		configuredLogger.Error().Err(err).Msg("admin command failed")
+		logEvent := configuredLogger.Error().Err(err)
+		if diagnostics, ok := admin.LogonDiagnosticsFromError(err); ok {
+			logEvent = appendLogonDiagnosticFields(logEvent, cfg, diagnostics)
+		} else if errors.Is(err, admin.ErrTimeout) {
+			logEvent = appendAdminTargetFields(logEvent, cfg)
+		}
+		logEvent.Msg("admin command failed")
 		return err
 	}
 	return renderAdminResult(out, cfg, result)
 }
 
+func appendAdminTargetFields(event *zerolog.Event, cfg *config.AppConfig) *zerolog.Event {
+	return event.
+		Str("target_host", cfg.Profile.Host).
+		Int("target_port", cfg.Profile.Port)
+}
+
+func appendLogonDiagnosticFields(event *zerolog.Event, cfg *config.AppConfig, diagnostics admin.LogonDiagnostics) *zerolog.Event {
+	event = appendAdminTargetFields(event, cfg).
+		Bool("tls_enabled", cfg.Profile.TLS.Enabled).
+		Str("timeout", diagnostics.Timeout.String()).
+		Bool("logon_sent", diagnostics.LogonSent).
+		Bool("logon_response_seen", diagnostics.LogonResponseSeen)
+	if diagnostics.Session != "" {
+		event = event.Str("session", diagnostics.Session)
+	}
+	if diagnostics.LastEvent != "" {
+		event = event.Str("last_event", diagnostics.LastEvent)
+	}
+	if diagnostics.LastAdminMsgType != "" {
+		event = event.Str("last_admin_msg_type", diagnostics.LastAdminMsgType)
+	}
+	if diagnostics.LastAdminText != "" {
+		event = event.Str("last_admin_text", diagnostics.LastAdminText)
+	}
+	if diagnostics.LastAdminRefSeqNum != "" {
+		event = event.Str("last_admin_ref_seq_num", diagnostics.LastAdminRefSeqNum)
+	}
+	if diagnostics.LastAdminSessionRejectCode != "" {
+		event = event.Str("last_admin_session_reject_code", diagnostics.LastAdminSessionRejectCode)
+	}
+	if diagnostics.LastAdminBusinessRejectID != "" {
+		event = event.Str("last_admin_business_reject_id", diagnostics.LastAdminBusinessRejectID)
+	}
+	if diagnostics.LastAdminBusinessRejectCode != "" {
+		event = event.Str("last_admin_business_reject_code", diagnostics.LastAdminBusinessRejectCode)
+	}
+	return event
+}
+
 func renderAdminResult(out io.Writer, cfg *config.AppConfig, result admin.Result) error {
-	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomTags), render.Options{
+	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomFieldDefs), render.Options{
 		Format:        render.Format(cfg.Output.Format),
 		RawDelimiter:  cfg.Output.RawDelimiter,
 		ShowSensitive: !cfg.Output.RedactSensitive,

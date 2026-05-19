@@ -103,17 +103,28 @@ raw_delimiter = "|"
 # true 时会隐藏账号、密码、Token、签名、RawData 等敏感值。
 redact_sensitive = true
 
-[[profile.custom_tags]]
-# 自定义 FIX tag 编号，必须为正整数。
+# Logon 附加 FIX tag。可配置多个，发送 Logon 时会写入 body。
+# 敏感值建议放在 private.toml；如果 tag 含敏感数据，请在 custom_field_defs 中标记 sensitive = true。
+# 不允许覆盖 8/9/10/34/35/49/52/56/98/108/141/553/554 等协议或内置 Logon 字段。
+# [[profile.logon_tags]]
+# tag = 9001
+# value = "replace-with-session-token"
+#
+# [[profile.logon_tags]]
+# tag = 9002
+# value = "ALPHA"
+
+[[profile.custom_field_defs]]
+# 自定义 FIX 字段定义编号，必须为正整数。
 tag = 9001
 
-# 自定义 tag 名称，用于 table/json 字段展示。
+# 自定义字段名称，用于 table/json 字段展示和日志 pretty_message 标注。
 name = "SessionToken"
 
-# 自定义 tag 类型，用于展示和文档说明，例如 STRING、CHAR、INT、QTY、PRICE。
+# 自定义字段类型，用于展示和文档说明，例如 STRING、CHAR、INT、QTY、PRICE。
 type = "STRING"
 
-# 是否为当前业务必填字段。当前主要用于字典展示，不会自动强制下单参数必填。
+# 是否为当前业务必填字段。当前主要用于字典展示，不会自动强制下单或 Logon 参数必填。
 required = false
 
 # 是否敏感。true 时在输出中默认显示为 [REDACTED]。
@@ -122,8 +133,8 @@ sensitive = true
 # 字段说明，用于描述业务含义和对端约定。
 description = "示例敏感字段，输出时默认脱敏"
 
-[[profile.custom_tags]]
-# 可配置多个自定义 tag。
+[[profile.custom_field_defs]]
+# 可配置多个自定义字段定义。
 tag = 9002
 name = "Desk"
 type = "STRING"

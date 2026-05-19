@@ -137,7 +137,7 @@ func TestInspectRawHelpShowsCommand(t *testing.T) {
 	}
 }
 
-func TestInspectRawRendersCustomTags(t *testing.T) {
+func TestInspectRawRendersCustomFieldDefs(t *testing.T) {
 	configFile := writeInspectConfig(t)
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -386,7 +386,7 @@ func writeInspectConfig(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "inspect-config.toml")
 	content := `
-[[profile.custom_tags]]
+[[profile.custom_field_defs]]
 tag = 9002
 name = "Desk"
 type = "STRING"

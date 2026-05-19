@@ -28,8 +28,8 @@ func TestDictionaryResolvesStandardFieldsAndEnums(t *testing.T) {
 	}
 }
 
-func TestDictionaryAppliesCustomTags(t *testing.T) {
-	dict := New([]CustomTag{
+func TestDictionaryAppliesCustomFieldDefs(t *testing.T) {
+	dict := New([]CustomFieldDef{
 		{
 			Tag:       9001,
 			Name:      "SessionToken",
@@ -60,8 +60,8 @@ func TestDictionaryAppliesCustomTags(t *testing.T) {
 	}
 }
 
-func TestDictionaryCustomTagOverridesDisplayOnlyForStandardTag(t *testing.T) {
-	dict := New([]CustomTag{
+func TestDictionaryCustomFieldDefOverridesDisplayOnlyForStandardTag(t *testing.T) {
+	dict := New([]CustomFieldDef{
 		{
 			Tag:  35,
 			Name: "Message Kind",
@@ -89,7 +89,7 @@ func TestDictionaryCustomTagOverridesDisplayOnlyForStandardTag(t *testing.T) {
 }
 
 func TestDictionaryBuildsFromConfig(t *testing.T) {
-	dict := NewFromConfig([]config.CustomTagConfig{
+	dict := NewFromConfig([]config.CustomFieldDefConfig{
 		{
 			Tag:  9002,
 			Name: "AccessToken",
@@ -98,12 +98,12 @@ func TestDictionaryBuildsFromConfig(t *testing.T) {
 	})
 
 	if !dict.IsSensitive(9002) {
-		t.Fatal("AccessToken custom tag should be sensitive by name")
+		t.Fatal("AccessToken custom field def should be sensitive by name")
 	}
 }
 
 func TestDictionaryExplainsLowercaseConfigEnums(t *testing.T) {
-	dict := NewFromConfig([]config.CustomTagConfig{
+	dict := NewFromConfig([]config.CustomFieldDefConfig{
 		{
 			Tag:  9003,
 			Name: "Desk",
