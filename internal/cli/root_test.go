@@ -66,6 +66,24 @@ func TestRunHelpShowsScenarioFlags(t *testing.T) {
 	}
 }
 
+func TestVersionCommand(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"version"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"version: dev", "commit: none", "build_time: unknown"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("version output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
 func TestRawSendHelpShowsFlags(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer

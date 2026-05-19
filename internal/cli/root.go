@@ -8,12 +8,11 @@ import (
 	"fix-tool/internal/config"
 	"fix-tool/internal/logging"
 	"fix-tool/internal/validate"
+	"fix-tool/internal/version"
 
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
-
-const Version = "dev"
 
 type RootCommand struct {
 	*cobra.Command
@@ -45,7 +44,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	root := &cobra.Command{
 		Use:           "fix-tool",
 		Short:         "FIX protocol testing CLI",
-		Version:       Version,
+		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -82,7 +81,8 @@ func newVersionCommand(out io.Writer) *cobra.Command {
 		Use:   "version",
 		Short: "Print version",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			_, err := fmt.Fprintf(out, "fix-tool %s\n", Version)
+			info := version.Current()
+			_, err := fmt.Fprintf(out, "version: %s\ncommit: %s\nbuild_time: %s\n", info.Version, info.Commit, info.BuildTime)
 			return err
 		},
 	}

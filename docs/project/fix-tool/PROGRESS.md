@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- 阶段：任务 07、08、09 已完成，等待任务 10。
+- 阶段：任务 01 至 10 已完成，等待最终验收。
 - 当前版本：规划 V0.1。
 - 最后更新：2026-05-19。
 
@@ -29,7 +29,7 @@
 | 07 raw send、inspect raw、自定义 tag overlay | 已完成 | 已完成 raw builder、raw send、inspect raw、custom tag overlay、scenario raw 接入和测试 |
 | 08 scenario runner 与断言 | 已完成 | 已完成 YAML scenario runner、顺序执行、基础断言、JSON 结果导出、样例场景和测试；raw action 已接入任务 07 raw service |
 | 09 测试、mock acceptor、样例配置 | 已完成 | 已完成测试覆盖矩阵、mock acceptor、集成测试、安全样例配置、字典样例、场景样例和测试说明 |
-| 10 打包发布与使用文档 | 未开始 | 依赖任务 01-09 |
+| 10 打包发布与使用文档 | 已完成 | 已完成版本信息、version 命令、Makefile 发布包、CI、用户指南、安装说明、FAQ 和交付文档 |
 
 ## 待确认事项
 
@@ -39,4 +39,4 @@
 
 ## 下一步
 
-继续进入 `task-10-release-docs.md`。
+进入最终验收与发布前跨平台验证。

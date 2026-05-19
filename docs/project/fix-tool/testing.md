@@ -8,6 +8,7 @@
 | `internal/validate` | 单元测试 | 配置必填项、端口、心跳间隔、样例配置安全性 | `internal/validate/config_test.go` |
 | `internal/dictionary` | 单元测试 | 标准字段、自定义 tag、枚举、敏感字段识别 | `internal/dictionary/dictionary_test.go` |
 | `internal/message` | 单元测试 | New/Cancel/Replace 构造、枚举归一化、保护字段、自定义 tag、market 单不带价格 | `internal/message/order_test.go` |
+| `internal/raw` | 单元测试 | raw message 构造、保护字段拒绝、SOH 与展示分隔符处理 | `internal/raw/builder_test.go` |
 | `internal/trace` | 单元测试 | raw 归一化、BodyLength、CheckSum、非法字段、空报文 | `internal/trace/parser_test.go` |
 | `internal/render` | 单元测试 | table/raw/json 输出、敏感字段脱敏和显式展示 | `internal/render/render_test.go` |
 | `internal/admin` | 单元测试 | Logon、Heartbeat、TestRequest、Logout、超时、KeepSession 状态复用 | `internal/admin/service_test.go` |
@@ -42,6 +43,7 @@
 
 - 样例配置：`testdata/configs/mock-acceptor.toml`
 - 字典样例：`testdata/dictionaries/custom-tags.toml`
+- raw 报文样例：`testdata/messages/*.fix`
 - 样例场景：`testdata/scenarios/mock-acceptor-basic.yaml`
 - 既有订单生命周期场景：`testdata/scenarios/order-lifecycle.yaml`
 
