@@ -40,6 +40,53 @@ func TestAppConfigRejectsInvalidHeartbeatInterval(t *testing.T) {
 	}
 }
 
+func TestAppConfigRejectsInvalidCustomTags(t *testing.T) {
+	tests := []struct {
+		name      string
+		customTag config.CustomTagConfig
+		want      string
+	}{
+		{
+			name: "invalid-tag",
+			customTag: config.CustomTagConfig{
+				Name: "Desk",
+				Type: "STRING",
+			},
+			want: "tag must be positive",
+		},
+		{
+			name: "missing-name",
+			customTag: config.CustomTagConfig{
+				Tag:  9001,
+				Type: "STRING",
+			},
+			want: "name is required",
+		},
+		{
+			name: "missing-type",
+			customTag: config.CustomTagConfig{
+				Tag:  9001,
+				Name: "Desk",
+			},
+			want: "type is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Profile.CustomTags = []config.CustomTagConfig{tt.customTag}
+			err := validate.AppConfig(cfg)
+			if err == nil {
+				t.Fatal("AppConfig() error = nil, want custom tag validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("AppConfig() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestSampleMockConfigValidates(t *testing.T) {
 	cfg, err := config.Load(config.LoadOptions{
 		ConfigFile: filepath.Clean("../../testdata/configs/mock-acceptor.toml"),

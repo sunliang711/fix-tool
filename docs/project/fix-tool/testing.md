@@ -12,7 +12,7 @@
 | `internal/render` | 单元测试 | table/raw/json 输出、敏感字段脱敏和显式展示 | `internal/render/render_test.go` |
 | `internal/admin` | 单元测试 | Logon、Heartbeat、TestRequest、Logout、超时、KeepSession 状态复用 | `internal/admin/service_test.go` |
 | `internal/order` | 单元测试 | 订单发送、ExecutionReport/Reject 关联匹配、超时、参数错误前置返回 | `internal/order/service_test.go` |
-| `internal/scenario` | 单元测试 | YAML 加载、action alias、断言、失败中断、raw 未实现边界 | `internal/scenario/*_test.go` |
+| `internal/scenario` | 单元测试 | YAML 加载、action alias、断言、失败中断、raw action 接入 | `internal/scenario/*_test.go` |
 | `internal/shell` | 单元测试 | 命令解析、交互 runner、trace list | `internal/shell/*_test.go` |
 | `internal/mockfix` | 集成测试 | QuickFIX initiator 与 mock acceptor 的 Logon、Heartbeat、TestRequest、New、Replace、Cancel、Reject 链路 | `internal/mockfix/acceptor_test.go` |
 | `internal/cli` | 集成测试 | `fix-tool run` 通过 mock acceptor 执行样例场景 | `internal/cli/scenario_integration_test.go` |
@@ -35,7 +35,7 @@
 边界说明：
 
 - mock acceptor 只用于基础链路验证，不代表真实券商或交易所网关的风控、撮合、序列号策略和自定义字段规则。
-- task07 raw service 尚未实现，场景 runner 对 `raw` action 保持明确失败，不在 task09 中补 raw 能力。
+- task07 raw service 已接入，场景 runner 的 `raw` action 覆盖基础发送链路；mock acceptor 只覆盖有限 MsgType 响应。
 - mock acceptor 使用内存 store，测试结束必须调用 `Stop(ctx)` 释放 QuickFIX session 和监听端口。
 
 ## 样例文件
