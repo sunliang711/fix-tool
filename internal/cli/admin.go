@@ -30,6 +30,10 @@ func newCheckCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 	checkCmd := &cobra.Command{
 		Use:   "check",
 		Short: "Run one-shot FIX session checks",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
 	logonCmd := &cobra.Command{
 		Use:   "logon",
@@ -49,16 +53,6 @@ func newCheckCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 			})
 		},
 	}
-	heartbeatCmd := &cobra.Command{
-		Use:   "heartbeat",
-		Short: "Check FIX Heartbeat after Logon",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), "Heartbeat", func(ctx context.Context, service *admin.Service) (admin.Result, error) {
-				return service.Heartbeat(ctx)
-			})
-		},
-	}
-
 	var testRequestID string
 	testRequestCmd := &cobra.Command{
 		Use:   "test-request",
@@ -78,7 +72,7 @@ func newCheckCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 		logger.Warn().Err(err).Msg("failed to mark test request id flag required")
 	}
 
-	checkCmd.AddCommand(logonCmd, logoutCmd, heartbeatCmd, testRequestCmd)
+	checkCmd.AddCommand(logonCmd, logoutCmd, testRequestCmd)
 	return checkCmd
 }
 
@@ -94,7 +88,7 @@ func (r adminRunner) run(
 		ConfigFile:   r.flags.configFile,
 		PrivateFile:  r.flags.privateFile,
 		ProfileName:  r.flags.profileName,
-		LogLevel:     r.flags.logLevel,
+		LogLevel:     r.flags.effectiveLogLevel(),
 		OutputFormat: r.flags.outputFormat,
 	})
 	if err != nil {

@@ -18,12 +18,17 @@ const (
 	CommandOrderCancel  CommandKind = "order cancel"
 	CommandOrderReplace CommandKind = "order replace"
 	CommandTraceList    CommandKind = "trace list"
+	CommandSaveStart    CommandKind = "save start"
+	CommandSaveStop     CommandKind = "save stop"
+	CommandSaveStatus   CommandKind = "save status"
+	CommandHelp         CommandKind = "help"
 	CommandExit         CommandKind = "exit"
 )
 
 type Command struct {
 	Kind           CommandKind
 	TestRequestID  string
+	SavePath       string
 	NewRequest     order.NewRequest
 	CancelRequest  order.CancelRequest
 	ReplaceRequest order.ReplaceRequest
@@ -35,6 +40,8 @@ func Parse(line string) (Command, error) {
 		return Command{}, fmt.Errorf("empty command")
 	}
 	switch fields[0] {
+	case "help", "?":
+		return noArgCommand(fields, Command{Kind: CommandHelp})
 	case "logon":
 		return noArgCommand(fields, Command{Kind: CommandLogon})
 	case "logout":
@@ -47,6 +54,8 @@ func Parse(line string) (Command, error) {
 		return parseTestRequest(fields[1:])
 	case "trace":
 		return parseTrace(fields[1:])
+	case "save":
+		return parseSave(fields[1:])
 	case "order":
 		return parseOrder(fields[1:])
 	default:
@@ -77,6 +86,20 @@ func parseTrace(args []string) (Command, error) {
 		return Command{Kind: CommandTraceList}, nil
 	}
 	return Command{}, fmt.Errorf("trace supports only: trace list")
+}
+
+func parseSave(args []string) (Command, error) {
+	if len(args) == 1 {
+		switch args[0] {
+		case "stop":
+			return Command{Kind: CommandSaveStop}, nil
+		case "status":
+			return Command{Kind: CommandSaveStatus}, nil
+		default:
+			return Command{Kind: CommandSaveStart, SavePath: args[0]}, nil
+		}
+	}
+	return Command{}, fmt.Errorf("save supports only: save <file>, save stop, save status")
 }
 
 func parseOrder(args []string) (Command, error) {

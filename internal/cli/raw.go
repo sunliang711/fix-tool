@@ -81,7 +81,7 @@ func (r rawRunner) runSend(ctx context.Context, out io.Writer, errOut io.Writer,
 		ConfigFile:   r.flags.configFile,
 		PrivateFile:  r.flags.privateFile,
 		ProfileName:  r.flags.profileName,
-		LogLevel:     r.flags.logLevel,
+		LogLevel:     r.flags.effectiveLogLevel(),
 		OutputFormat: r.flags.outputFormat,
 	})
 	if err != nil {
@@ -118,7 +118,7 @@ func (r inspectRunner) runRaw(out io.Writer, rawMessage string) error {
 		ConfigFile:   r.flags.configFile,
 		PrivateFile:  r.flags.privateFile,
 		ProfileName:  r.flags.profileName,
-		LogLevel:     r.flags.logLevel,
+		LogLevel:     r.flags.effectiveLogLevel(),
 		OutputFormat: r.flags.outputFormat,
 	})
 	if err != nil {

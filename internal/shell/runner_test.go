@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -49,8 +51,8 @@ func TestRunnerContinuesAfterCommandError(t *testing.T) {
 	if !strings.Contains(errOut.String(), "heartbeat failed") {
 		t.Fatalf("errOut = %q, want heartbeat error", errOut.String())
 	}
-	if !strings.Contains(out.String(), "35=A|") {
-		t.Fatalf("out = %q, want logon trace", out.String())
+	if strings.Contains(out.String(), "35=A|") {
+		t.Fatalf("out = %q, want no immediate admin trace render", out.String())
 	}
 	if manager.stops != 1 {
 		t.Fatalf("stops = %d, want 1", manager.stops)
@@ -81,9 +83,14 @@ func TestRunnerTraceListRendersRecordedTraces(t *testing.T) {
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Request", "Response", "Trace 1", "Trace 2", "35=A|"} {
+	for _, want := range []string{"Trace 1", "Trace 2", "35=A|"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("out = %q, want %q", out.String(), want)
+		}
+	}
+	for _, unwanted := range []string{"Request", "Response"} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("out = %q, want no immediate admin trace title %q", out.String(), unwanted)
 		}
 	}
 }
@@ -110,6 +117,103 @@ func TestRunnerExitStopsSession(t *testing.T) {
 	case <-input.readDone:
 	case <-time.After(time.Second):
 		t.Fatal("reader goroutine did not exit")
+	}
+}
+
+func TestRunnerHelpCommand(t *testing.T) {
+	var out bytes.Buffer
+	runner := NewRunner(Options{
+		In:      strings.NewReader("help\n?\nexit\n"),
+		Out:     &out,
+		ErrOut:  &bytes.Buffer{},
+		Admin:   &stubAdminService{},
+		Order:   &stubOrderService{},
+		Manager: &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	for _, want := range []string{"Commands:", "help, ?", "logon", "order new", "save <file>", "trace list", "exit", "Up/Down"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("out = %q, want %q", out.String(), want)
+		}
+	}
+	if count := strings.Count(out.String(), "Commands:"); count != 2 {
+		t.Fatalf("help count = %d, want 2 in %q", count, out.String())
+	}
+}
+
+func TestRunnerUsesLineReader(t *testing.T) {
+	var out bytes.Buffer
+	reader := &fakeLineReader{
+		lines: []string{"help", "exit"},
+	}
+	runner := NewRunner(Options{
+		LineReader: reader,
+		Out:        &out,
+		ErrOut:     &bytes.Buffer{},
+		Admin:      &stubAdminService{},
+		Order:      &stubOrderService{},
+		Manager:    &runnerFakeManager{},
+		Prompt:     "fix-tool> ",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !reader.closed {
+		t.Fatal("line reader was not closed")
+	}
+	if got, want := strings.Join(reader.prompts, ","), "fix-tool> ,fix-tool> "; got != want {
+		t.Fatalf("prompts = %q, want %q", got, want)
+	}
+	if !strings.Contains(out.String(), "Commands:") {
+		t.Fatalf("out = %q, want help text", out.String())
+	}
+}
+
+func TestRunnerSaveCommandRecordsTranscript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.log")
+	transcript := NewTranscriptRecorder("fix-tool> ")
+	var out bytes.Buffer
+	outWriter := transcript.Wrap(&out)
+	runner := NewRunner(Options{
+		In:         strings.NewReader("save " + path + "\nhelp\nsave status\nsave stop\nexit\n"),
+		Out:        outWriter,
+		ErrOut:     transcript.Wrap(&bytes.Buffer{}),
+		Admin:      &stubAdminService{},
+		Order:      &stubOrderService{},
+		Manager:    &runnerFakeManager{},
+		Transcript: transcript,
+		Prompt:     "fix-tool> ",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"# fix-tool shell transcript",
+		"saving shell transcript to " + path,
+		"fix-tool> help",
+		"Commands:",
+		"fix-tool> save status",
+		"save active file=" + path,
+		"fix-tool> save stop",
+		"saving shell transcript stopped file=" + path,
+		"# stopped_at=",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("transcript = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "fix-tool> fix-tool>") {
+		t.Fatalf("transcript = %q, want no duplicate prompt", got)
 	}
 }
 
@@ -236,6 +340,30 @@ func (s *stubOrderService) CancelOrder(context.Context, order.CancelRequest) (or
 
 func (s *stubOrderService) ReplaceOrder(context.Context, order.ReplaceRequest) (order.Result, error) {
 	return order.Result{}, nil
+}
+
+type fakeLineReader struct {
+	lines   []string
+	prompts []string
+	closed  bool
+}
+
+func (r *fakeLineReader) ReadLine(ctx context.Context, prompt string) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	r.prompts = append(r.prompts, prompt)
+	if len(r.lines) == 0 {
+		return "", false, nil
+	}
+	line := r.lines[0]
+	r.lines = r.lines[1:]
+	return line, true, nil
+}
+
+func (r *fakeLineReader) Close() error {
+	r.closed = true
+	return nil
 }
 
 type runnerFakeManager struct {

@@ -216,7 +216,6 @@ fix-tool profile show uat
 ```bash
 fix-tool check logon --profile uat
 fix-tool check logout --profile uat
-fix-tool check heartbeat --profile uat
 fix-tool check test-request --profile uat --id ping-001
 ```
 
@@ -296,7 +295,7 @@ fix-tool run scenario.yaml
 | 01 | 项目骨架、配置模型、日志、Fx 组装 | 无 |
 | 02 | QuickFIX/Go session adapter 与 profile 加载 | 01 |
 | 03 | 报文捕获、解析、字段名映射、脱敏渲染 | 01、02 |
-| 04 | check 命令：logon/logout/heartbeat/test-request 一次性检查 | 02、03 |
+| 04 | check 命令：logon/logout/test-request 一次性检查 | 02、03 |
 | 05 | order 命令：new/cancel/replace 与 ExecutionReport 匹配 | 02、03 |
 | 06 | 交互式 shell | 04、05 |
 | 07 | raw send、inspect raw、自定义 tag overlay | 03、05 |

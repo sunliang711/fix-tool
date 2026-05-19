@@ -11,11 +11,16 @@ func TestParseCommands(t *testing.T) {
 		{name: "logon", line: "logon", want: CommandLogon},
 		{name: "logout", line: "logout", want: CommandLogout},
 		{name: "heartbeat", line: "heartbeat", want: CommandHeartbeat},
+		{name: "help", line: "help", want: CommandHelp},
+		{name: "question-mark", line: "?", want: CommandHelp},
 		{name: "test-request", line: "test-request --id ping-001", want: CommandTestRequest},
 		{name: "order-new", line: "order new --symbol AAPL --side buy --qty 100 --price 10.25 --tag 59=0", want: CommandOrderNew},
 		{name: "order-cancel", line: "order cancel --orig-cl-ord-id C001 --symbol AAPL --side sell", want: CommandOrderCancel},
 		{name: "order-replace", line: "order replace --orig-cl-ord-id C001 --symbol AAPL --side buy --qty 50 --price=10.30", want: CommandOrderReplace},
 		{name: "trace-list", line: "trace list", want: CommandTraceList},
+		{name: "save-start", line: "save transcript.log", want: CommandSaveStart},
+		{name: "save-stop", line: "save stop", want: CommandSaveStop},
+		{name: "save-status", line: "save status", want: CommandSaveStatus},
 		{name: "exit", line: "exit", want: CommandExit},
 	}
 
@@ -29,6 +34,16 @@ func TestParseCommands(t *testing.T) {
 				t.Fatalf("Kind = %q, want %q", got.Kind, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseSavePath(t *testing.T) {
+	command, err := Parse("save transcript.log")
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if command.SavePath != "transcript.log" {
+		t.Fatalf("SavePath = %q, want transcript.log", command.SavePath)
 	}
 }
 

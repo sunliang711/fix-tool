@@ -179,7 +179,6 @@ fix-tool --config config.toml --private private.toml order replace \
 
 ```bash
 fix-tool --config config.toml --private private.toml check logon
-fix-tool --config config.toml --private private.toml check heartbeat
 fix-tool --config config.toml --private private.toml check test-request --id ping-001
 fix-tool --config config.toml --private private.toml check logout
 ```

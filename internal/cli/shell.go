@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"io"
+	"os"
+
 	"fix-tool/internal/admin"
 	"fix-tool/internal/config"
 	"fix-tool/internal/dictionary"
@@ -11,6 +14,7 @@ import (
 	toolshell "fix-tool/internal/shell"
 	"fix-tool/internal/validate"
 
+	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
@@ -37,7 +41,7 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		ConfigFile:   r.flags.configFile,
 		PrivateFile:  r.flags.privateFile,
 		ProfileName:  r.flags.profileName,
-		LogLevel:     r.flags.logLevel,
+		LogLevel:     r.flags.effectiveLogLevel(),
 		OutputFormat: r.flags.outputFormat,
 	})
 	if err != nil {
@@ -48,7 +52,13 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		r.logger.Error().Err(err).Msg("configuration validation failed")
 		return err
 	}
-	configuredLogger, err := logging.New(cmd.ErrOrStderr(), cfg.Log)
+	prompt := "fix-tool> "
+	transcript := toolshell.NewTranscriptRecorder(prompt)
+	out := transcript.Wrap(cmd.OutOrStdout())
+	errOut := transcript.Wrap(cmd.ErrOrStderr())
+	promptLogWriter := toolshell.NewPromptLogWriter(errOut, out, prompt)
+	lineReader := newShellLineReader(cmd.InOrStdin(), cmd.OutOrStdout(), promptLogWriter)
+	configuredLogger, err := logging.New(promptLogWriter, cfg.Log)
 	if err != nil {
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
@@ -66,19 +76,34 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		ShowSensitive: !cfg.Output.RedactSensitive,
 	})
 	runner := toolshell.NewRunner(toolshell.Options{
-		In:       cmd.InOrStdin(),
-		Out:      cmd.OutOrStdout(),
-		ErrOut:   cmd.ErrOrStderr(),
-		Admin:    admin.NewService(manager, admin.Options{KeepSession: true, SessionState: state}),
-		Order:    order.NewService(manager, order.Options{KeepSession: true, SessionState: state}),
-		Manager:  manager,
-		Renderer: renderer,
-		Format:   render.Format(cfg.Output.Format),
-		Prompt:   "fix-tool> ",
+		In:         cmd.InOrStdin(),
+		Out:        out,
+		ErrOut:     errOut,
+		LineReader: lineReader,
+		Admin:      admin.NewService(manager, admin.Options{KeepSession: true, SessionState: state}),
+		Order:      order.NewService(manager, order.Options{KeepSession: true, SessionState: state}),
+		Manager:    manager,
+		Renderer:   renderer,
+		Transcript: transcript,
+		Format:     render.Format(cfg.Output.Format),
+		Prompt:     prompt,
+		PromptCtl:  promptLogWriter,
 	})
 	if err := runner.Run(cmd.Context()); err != nil {
 		configuredLogger.Error().Err(err).Msg("shell command failed")
 		return err
 	}
 	return nil
+}
+
+func newShellLineReader(in io.Reader, out io.Writer, promptCtl toolshell.PromptController) toolshell.LineReader {
+	if !isTerminal(in) || !isTerminal(out) {
+		return nil
+	}
+	return toolshell.NewHistoryLineReader(promptCtl)
+}
+
+func isTerminal(value any) bool {
+	file, ok := value.(*os.File)
+	return ok && isatty.IsTerminal(file.Fd())
 }

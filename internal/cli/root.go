@@ -26,7 +26,21 @@ type flagState struct {
 	privateFile   string
 	profileName   string
 	logLevel      string
+	verbose       bool
 	outputFormat  string
+}
+
+func (f *flagState) effectiveLogLevel() string {
+	if f == nil {
+		return ""
+	}
+	if f.logLevel != "" {
+		return f.logLevel
+	}
+	if f.verbose {
+		return "debug"
+	}
+	return ""
 }
 
 func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
@@ -64,6 +78,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	root.PersistentFlags().StringVar(&flags.privateFile, "private", "", "private configuration file")
 	root.PersistentFlags().StringVar(&flags.profileName, "profile", "", "profile name")
 	root.PersistentFlags().StringVar(&flags.logLevel, "log-level", "", "log level")
+	root.PersistentFlags().BoolVarP(&flags.verbose, "verbose", "v", false, "enable debug logging")
 	root.PersistentFlags().StringVar(&flags.outputFormat, "output", "", "output format")
 	if err := root.PersistentFlags().MarkHidden("default-config"); err != nil {
 		logger.Warn().Err(err).Msg("failed to hide default configuration flag")
@@ -107,7 +122,7 @@ func newConfigCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 				ConfigFile:   flags.configFile,
 				PrivateFile:  flags.privateFile,
 				ProfileName:  flags.profileName,
-				LogLevel:     flags.logLevel,
+				LogLevel:     flags.effectiveLogLevel(),
 				OutputFormat: flags.outputFormat,
 			})
 			if err != nil {

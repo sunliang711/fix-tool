@@ -6,7 +6,7 @@
 
 ## 技术方案
 
-- 在 `internal/cli` 增加 `check logon`、`check logout`、`check heartbeat`、`check test-request` 子命令。
+- 在 `internal/cli` 增加 `check logon`、`check logout`、`check test-request` 子命令。
 - 在 service 层封装 admin message 操作。
 - 复用 session manager 发送消息并等待目标响应或超时。
 - 输出请求和响应 trace。
@@ -15,7 +15,6 @@
 
 - `fix-tool check logon --profile uat` 可检查登录握手。
 - `fix-tool check logout --profile uat` 可检查登出握手。
-- `fix-tool check heartbeat --profile uat` 可检查心跳。
 - `fix-tool check test-request --profile uat --id ping-001` 可检查 TestRequest。
 - 每个命令都打印请求包和响应包详情。
 

@@ -57,7 +57,7 @@ func (r scenarioRunner) run(cmd *cobra.Command, scenarioFile string, runFlags *s
 		ConfigFile:   r.flags.configFile,
 		PrivateFile:  r.flags.privateFile,
 		ProfileName:  r.flags.profileName,
-		LogLevel:     r.flags.logLevel,
+		LogLevel:     r.flags.effectiveLogLevel(),
 		OutputFormat: r.flags.outputFormat,
 	})
 	if err != nil {

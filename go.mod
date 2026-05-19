@@ -4,6 +4,8 @@ go 1.25.10
 
 require (
 	github.com/go-playground/validator/v10 v10.30.2
+	github.com/mattn/go-isatty v0.0.20
+	github.com/peterh/liner v1.2.2
 	github.com/quickfixgo/quickfix v0.9.10
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
@@ -21,7 +23,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-runewidth v0.0.3 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

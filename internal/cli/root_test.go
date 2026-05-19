@@ -45,10 +45,13 @@ func TestCheckHelp(t *testing.T) {
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("ExecuteContext() error = %v", err)
 	}
-	for _, want := range []string{"Run one-shot FIX session checks", "logon", "logout", "heartbeat", "test-request"} {
+	for _, want := range []string{"Run one-shot FIX session checks", "logon", "logout", "test-request"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want %q", out.String(), want)
 		}
+	}
+	if strings.Contains(out.String(), "heartbeat") {
+		t.Fatalf("help output = %q, want no check heartbeat command", out.String())
 	}
 }
 
@@ -121,6 +124,65 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+func TestVersionFlagUsesLongFlagOnly(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	help := out.String()
+	if !strings.Contains(help, "-v, --verbose") {
+		t.Fatalf("help output = %q, want verbose shorthand", help)
+	}
+	if !strings.Contains(help, "--version") {
+		t.Fatalf("help output = %q, want version flag", help)
+	}
+	if strings.Contains(help, "-v, --version") {
+		t.Fatalf("help output = %q, want no version shorthand", help)
+	}
+}
+
+func TestRootVersionFlag(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"--version"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "fix-tool version dev") {
+		t.Fatalf("version output = %q, want root version", out.String())
+	}
+}
+
+func TestVerboseFlagSetsDebugLogLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags flagState
+		want  string
+	}{
+		{name: "default", flags: flagState{}, want: ""},
+		{name: "verbose", flags: flagState{verbose: true}, want: "debug"},
+		{name: "explicit-log-level-wins", flags: flagState{verbose: true, logLevel: "warn"}, want: "warn"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.flags.effectiveLogLevel(); got != tt.want {
+				t.Fatalf("effectiveLogLevel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRootRejectsUnknownFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -147,6 +209,23 @@ func TestRootRejectsUnknownFlags(t *testing.T) {
 				t.Fatalf("ExecuteContext() error = %v, want unknown flag error", err)
 			}
 		})
+	}
+}
+
+func TestCheckHeartbeatIsNotRegistered(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"check", "heartbeat"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	err := command.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("ExecuteContext() error = nil, want unknown command error")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("ExecuteContext() error = %v, want unknown command error", err)
 	}
 }
 
