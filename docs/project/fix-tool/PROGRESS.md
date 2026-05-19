@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- 阶段：任务 03 已完成，等待任务 04。
+- 阶段：任务 04 已完成，等待任务 05。
 - 当前版本：规划 V0.1。
 - 最后更新：2026-05-19。
 
@@ -23,7 +23,7 @@
 | 01 项目骨架、配置模型、日志、Fx 组装 | 已完成 | 已完成 Go module、Cobra、Viper、Zerolog、Fx、配置校验和基础测试 |
 | 02 QuickFIX/Go session adapter 与 profile 加载 | 已完成 | 已完成 QuickFIX/Go initiator 封装、profile settings 映射、事件捕获、Fx 生命周期和测试 |
 | 03 报文捕获、解析、字段名映射、脱敏渲染 | 已完成 | 已完成 trace、raw 解析、字段字典、BodyLength/CheckSum 校验、脱敏、table/json/raw 渲染和测试 |
-| 04 admin 命令 | 未开始 | 依赖任务 02、03 |
+| 04 admin 命令 | 已完成 | 已完成 logon、logout、heartbeat、test-request 命令、admin service、发送/等待/超时逻辑和测试 |
 | 05 order 命令 | 未开始 | 依赖任务 02、03 |
 | 06 交互式 shell | 未开始 | 依赖任务 04、05 |
 | 07 raw send、inspect raw、自定义 tag overlay | 未开始 | 依赖任务 03、05 |
@@ -39,4 +39,4 @@
 
 ## 下一步
 
-从 `task-04-admin-commands.md` 开始开发。
+从 `task-05-order-commands.md` 开始开发。

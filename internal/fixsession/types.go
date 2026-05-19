@@ -37,6 +37,7 @@ type Manager interface {
 type Session interface {
 	ID() quickfix.SessionID
 	ProfileName() string
+	Send(message *quickfix.Message) error
 }
 
 type Application interface {
@@ -55,4 +56,8 @@ func (s session) ID() quickfix.SessionID {
 
 func (s session) ProfileName() string {
 	return s.profileName
+}
+
+func (s session) Send(message *quickfix.Message) error {
+	return quickfix.SendToTarget(message, s.id)
 }
