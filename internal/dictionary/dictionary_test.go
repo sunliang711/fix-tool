@@ -101,3 +101,21 @@ func TestDictionaryBuildsFromConfig(t *testing.T) {
 		t.Fatal("AccessToken custom tag should be sensitive by name")
 	}
 }
+
+func TestDictionaryExplainsLowercaseConfigEnums(t *testing.T) {
+	dict := NewFromConfig([]config.CustomTagConfig{
+		{
+			Tag:  9003,
+			Name: "Desk",
+			Type: "STRING",
+			Enums: map[string]string{
+				"alpha": "Alpha desk",
+			},
+		},
+	})
+
+	enum, ok := dict.ExplainValue(9003, "ALPHA")
+	if !ok || enum != "Alpha desk" {
+		t.Fatalf("enum = %q, ok = %t, want Alpha desk true", enum, ok)
+	}
+}

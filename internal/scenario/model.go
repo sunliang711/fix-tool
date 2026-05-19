@@ -29,6 +29,7 @@ type StepInput struct {
 	Price         string   `json:"price,omitempty" yaml:"price"`
 	OrdType       string   `json:"ord_type,omitempty" yaml:"ord_type"`
 	TimeInForce   string   `json:"time_in_force,omitempty" yaml:"time_in_force"`
+	MsgType       string   `json:"msg_type,omitempty" yaml:"msg_type"`
 	Tags          []string `json:"tags,omitempty" yaml:"tags"`
 	Raw           string   `json:"raw,omitempty" yaml:"raw"`
 }
@@ -76,6 +77,9 @@ func (s Step) Validate(index int) error {
 	}
 	if action == ActionTestRequest && strings.TrimSpace(s.Input.TestRequestID) == "" {
 		return fmt.Errorf("step %d: test_request_id is required", index+1)
+	}
+	if action == ActionRaw && strings.TrimSpace(s.Input.MsgType) == "" {
+		return fmt.Errorf("step %d: msg_type is required", index+1)
 	}
 	for i, assertion := range s.Assert {
 		if err := assertion.Validate(); err != nil {

@@ -13,6 +13,7 @@ import (
 	"fix-tool/internal/fixsession"
 	"fix-tool/internal/logging"
 	"fix-tool/internal/order"
+	rawsvc "fix-tool/internal/raw"
 	"fix-tool/internal/render"
 	"fix-tool/internal/scenario"
 	toolshell "fix-tool/internal/shell"
@@ -86,6 +87,7 @@ func (r scenarioRunner) run(cmd *cobra.Command, scenarioFile string, runFlags *s
 	runner := scenario.NewRunner(scenario.Options{
 		Admin:   admin.NewService(manager, admin.Options{KeepSession: true, SessionState: state}),
 		Order:   order.NewService(manager, order.Options{KeepSession: true, SessionState: state}),
+		Raw:     rawsvc.NewService(manager, rawsvc.Options{KeepSession: true, SessionState: state}),
 		Manager: manager,
 	})
 	result, runErr := runner.Run(cmd.Context(), loadedScenario)

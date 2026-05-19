@@ -11,6 +11,7 @@ import (
 	"fix-tool/internal/fixsession"
 	"fix-tool/internal/message"
 	"fix-tool/internal/order"
+	rawsvc "fix-tool/internal/raw"
 	"fix-tool/internal/trace"
 )
 
@@ -139,19 +140,57 @@ func TestRunnerStopsOnAssertionFailure(t *testing.T) {
 	}
 }
 
-func TestRunnerReportsRawActionUnavailable(t *testing.T) {
+func TestRunnerExecutesRawAction(t *testing.T) {
+	rawService := &fakeRawService{}
+	runner := NewRunner(Options{
+		Raw: rawService,
+		Now: fixedClock(),
+	})
+	equalsExecType := "0"
+	scenarioValue := Scenario{
+		Name: "raw",
+		Steps: []Step{
+			{
+				Name:   "raw",
+				Action: ActionRaw,
+				Input: StepInput{
+					MsgType: "D",
+					Tags:    []string{"11=RAW-1"},
+				},
+				Wait:   WaitConfig{MsgType: "8"},
+				Assert: []Assertion{{Field: "exec_type", Equals: &equalsExecType}},
+			},
+		},
+	}
+
+	result, err := runner.Run(context.Background(), scenarioValue)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if rawService.request.MsgType != "D" {
+		t.Fatalf("raw msg type = %q, want D", rawService.request.MsgType)
+	}
+	if len(rawService.request.Tags) != 1 || rawService.request.Tags[0] != "11=RAW-1" {
+		t.Fatalf("raw tags = %#v, want scenario tags", rawService.request.Tags)
+	}
+	if len(result.Steps[0].Traces) != 2 {
+		t.Fatalf("raw traces = %d, want request and response", len(result.Steps[0].Traces))
+	}
+}
+
+func TestRunnerReportsRawServiceMissing(t *testing.T) {
 	runner := NewRunner(Options{Now: fixedClock()})
 	result, err := runner.Run(context.Background(), Scenario{
 		Name: "raw",
 		Steps: []Step{
-			{Name: "raw", Action: ActionRaw, Input: StepInput{Raw: "35=D"}},
+			{Name: "raw", Action: ActionRaw, Input: StepInput{MsgType: "D"}},
 		},
 	})
 	if !errors.Is(err, ErrScenarioFailed) {
 		t.Fatalf("Run() error = %v, want ErrScenarioFailed", err)
 	}
-	if !strings.Contains(result.Steps[0].Error, "task07") {
-		t.Fatalf("step error = %q, want task07 hint", result.Steps[0].Error)
+	if !strings.Contains(result.Steps[0].Error, "raw service is required") {
+		t.Fatalf("step error = %q, want raw service error", result.Steps[0].Error)
 	}
 }
 
@@ -239,6 +278,18 @@ type fakeOrderService struct {
 	newRequest    order.NewRequest
 	cancelRequest order.CancelRequest
 	newExecType   string
+}
+
+type fakeRawService struct {
+	request rawsvc.Request
+}
+
+func (s *fakeRawService) Send(_ context.Context, request rawsvc.Request) (rawsvc.Result, error) {
+	s.request = request
+	return rawsvc.Result{
+		Request:  orderTrace(request.MsgType, "RAW-1", "", trace.DirectionOutbound),
+		Response: executionReport("RAW-1", "0"),
+	}, nil
 }
 
 func (s *fakeOrderService) NewOrder(_ context.Context, request order.NewRequest) (order.Result, error) {

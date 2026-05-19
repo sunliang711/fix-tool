@@ -10,6 +10,7 @@ import (
 	"fix-tool/internal/admin"
 	"fix-tool/internal/fixsession"
 	"fix-tool/internal/order"
+	rawsvc "fix-tool/internal/raw"
 	"fix-tool/internal/trace"
 )
 
@@ -28,9 +29,14 @@ type OrderService interface {
 	ReplaceOrder(context.Context, order.ReplaceRequest) (order.Result, error)
 }
 
+type RawService interface {
+	Send(context.Context, rawsvc.Request) (rawsvc.Result, error)
+}
+
 type Options struct {
 	Admin       AdminService
 	Order       OrderService
+	Raw         RawService
 	Manager     fixsession.Manager
 	Recorder    *trace.Recorder
 	StopTimeout time.Duration
@@ -40,6 +46,7 @@ type Options struct {
 type Runner struct {
 	admin       AdminService
 	order       OrderService
+	raw         RawService
 	manager     fixsession.Manager
 	recorder    *trace.Recorder
 	stopTimeout time.Duration
@@ -94,6 +101,7 @@ func NewRunner(options Options) *Runner {
 	return &Runner{
 		admin:       options.Admin,
 		order:       options.Order,
+		raw:         options.Raw,
 		manager:     options.Manager,
 		recorder:    recorder,
 		stopTimeout: stopTimeout,
@@ -241,8 +249,14 @@ func (r *Runner) execute(ctx context.Context, action string, input StepInput) ([
 		})
 		return r.recordOrderResult(result), result.Response, err
 	case ActionRaw:
-		// task07 尚未提供 raw service，这里保留清晰失败入口，后续可直接替换为真实执行。
-		return nil, nil, fmt.Errorf("raw action is not available before task07 is implemented")
+		if r.raw == nil {
+			return nil, nil, fmt.Errorf("raw service is required")
+		}
+		result, err := r.raw.Send(ctx, rawsvc.Request{
+			MsgType: input.MsgType,
+			Tags:    input.Tags,
+		})
+		return r.recordRawResult(result), result.Response, err
 	default:
 		return nil, nil, fmt.Errorf("unsupported action %q", action)
 	}
@@ -253,6 +267,10 @@ func (r *Runner) recordAdminResult(result admin.Result) []trace.MessageTrace {
 }
 
 func (r *Runner) recordOrderResult(result order.Result) []trace.MessageTrace {
+	return r.recordMessages(result.Request, result.Response)
+}
+
+func (r *Runner) recordRawResult(result rawsvc.Result) []trace.MessageTrace {
 	return r.recordMessages(result.Request, result.Response)
 }
 

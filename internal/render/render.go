@@ -93,10 +93,10 @@ func (r *Renderer) Table(message trace.MessageTrace) (string, error) {
 	fmt.Fprintf(writer, "BodyLength\tvalid=%t\texpected=%s\tactual=%s\n", message.BodyLengthValid, message.BodyLength.Expected, message.BodyLength.Actual)
 	fmt.Fprintf(writer, "CheckSum\tvalid=%t\texpected=%s\tactual=%s\n", message.CheckSumValid, message.CheckSum.Expected, message.CheckSum.Actual)
 	fmt.Fprintf(writer, "Raw\t%s\n\n", r.rawFromFields(fields))
-	fmt.Fprintf(writer, "Tag\tName\tValue\tEnum\tSensitive\n")
+	fmt.Fprintf(writer, "Tag\tName\tType\tValue\tEnum\tSensitive\n")
 	for _, field := range fields {
 		view := r.fieldView(field)
-		fmt.Fprintf(writer, "%d\t%s\t%s\t%s\t%t\n", view.Tag, view.Name, view.Value, view.Enum, view.Sensitive)
+		fmt.Fprintf(writer, "%d\t%s\t%s\t%s\t%s\t%t\n", view.Tag, view.Name, view.Type, view.Value, view.Enum, view.Sensitive)
 	}
 	if err := writer.Flush(); err != nil {
 		return "", fmt.Errorf("render table: %w", err)
@@ -150,9 +150,11 @@ func (r *Renderer) rawFromFields(fields []trace.Field) string {
 func (r *Renderer) fieldView(field trace.Field) fieldView {
 	definition, ok := r.dictionary.Lookup(field.Tag)
 	name := fmt.Sprintf("Tag%d", field.Tag)
+	fieldType := ""
 	sensitive := false
 	if ok {
 		name = definition.Name
+		fieldType = definition.Type
 		sensitive = definition.Sensitive
 	}
 	value := field.Value
@@ -165,6 +167,7 @@ func (r *Renderer) fieldView(field trace.Field) fieldView {
 	return fieldView{
 		Tag:       field.Tag,
 		Name:      name,
+		Type:      fieldType,
 		Value:     value,
 		Enum:      enum,
 		Sensitive: sensitive,

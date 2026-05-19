@@ -70,6 +70,8 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	root.AddCommand(newConfigCommand(flags, logger))
 	root.AddCommand(newAdminCommands(flags, logger)...)
 	root.AddCommand(newOrderCommand(flags, logger))
+	root.AddCommand(newRawCommand(flags, logger))
+	root.AddCommand(newInspectCommand(flags, logger))
 	root.AddCommand(newShellCommand(flags, logger))
 	root.AddCommand(newScenarioCommand(flags, logger))
 	return &RootCommand{Command: root}

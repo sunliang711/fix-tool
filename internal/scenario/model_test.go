@@ -38,3 +38,10 @@ func TestStepValidateRequiresTestRequestID(t *testing.T) {
 		t.Fatalf("Validate() error = %v, want test_request_id error", err)
 	}
 }
+
+func TestStepValidateRequiresRawMsgType(t *testing.T) {
+	err := Step{Action: ActionRaw}.Validate(0)
+	if err == nil || !strings.Contains(err.Error(), "msg_type is required") {
+		t.Fatalf("Validate() error = %v, want msg_type error", err)
+	}
+}

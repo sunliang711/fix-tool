@@ -5,6 +5,7 @@ import "fix-tool/internal/trace"
 type fieldView struct {
 	Tag       int    `json:"tag"`
 	Name      string `json:"name"`
+	Type      string `json:"type,omitempty"`
 	Value     string `json:"value"`
 	Enum      string `json:"enum,omitempty"`
 	Sensitive bool   `json:"sensitive,omitempty"`

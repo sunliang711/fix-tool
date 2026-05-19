@@ -82,6 +82,10 @@ func (d *Dictionary) ExplainValue(tag int, value string) (string, bool) {
 		return "", false
 	}
 	explanation, ok := field.Enums[value]
+	if ok {
+		return explanation, true
+	}
+	explanation, ok = field.Enums[strings.ToLower(value)]
 	return explanation, ok
 }
 

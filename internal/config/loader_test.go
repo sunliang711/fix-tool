@@ -93,6 +93,28 @@ func TestLoadFailsWhenExplicitConfigFileMissing(t *testing.T) {
 	}
 }
 
+func TestLoadCustomTagEnums(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom-tags.toml")
+	writeFile(t, path, `
+[[profile.custom_tags]]
+tag = 9002
+name = "Desk"
+type = "STRING"
+enums = { ALPHA = "Alpha desk" }
+`)
+
+	cfg, err := Load(LoadOptions{ConfigFile: path})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.Profile.CustomTags) != 1 {
+		t.Fatalf("custom tags = %d, want 1", len(cfg.Profile.CustomTags))
+	}
+	if cfg.Profile.CustomTags[0].Enums["alpha"] != "Alpha desk" {
+		t.Fatalf("custom tag enums = %#v, want alpha", cfg.Profile.CustomTags[0].Enums)
+	}
+}
+
 func writeFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {

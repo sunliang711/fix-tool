@@ -15,7 +15,4 @@ type = "STRING"
 required = false
 sensitive = false
 description = "Mock trading desk identifier"
-
-[profile.custom_tags.enums]
-ALPHA = "Alpha desk"
-BETA = "Beta desk"
+enums = { ALPHA = "Alpha desk", BETA = "Beta desk" }

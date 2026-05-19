@@ -37,7 +37,7 @@ func TestRendererTableIncludesFieldNamesAndEnums(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render(table) error = %v", err)
 	}
-	for _, want := range []string{"Raw", "MsgType", "NewOrderSingle", "Side", "Buy", "SessionToken", redactedValue} {
+	for _, want := range []string{"Raw", "MsgType", "STRING", "NewOrderSingle", "Side", "CHAR", "Buy", "SessionToken", redactedValue} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("table output missing %q:\n%s", want, output)
 		}
@@ -63,6 +63,7 @@ func TestRendererJSONIncludesRedactedFields(t *testing.T) {
 		Fields []struct {
 			Tag   int    `json:"tag"`
 			Name  string `json:"name"`
+			Type  string `json:"type"`
 			Value string `json:"value"`
 			Enum  string `json:"enum"`
 		} `json:"fields"`
@@ -73,8 +74,8 @@ func TestRendererJSONIncludesRedactedFields(t *testing.T) {
 	if !strings.Contains(payload.Raw, redactedValue) {
 		t.Fatalf("json raw = %q, want redacted value", payload.Raw)
 	}
-	assertFieldView(t, payload.Fields, 35, "MsgType", "D", "NewOrderSingle")
-	assertFieldView(t, payload.Fields, 9001, "SessionToken", redactedValue, "")
+	assertFieldView(t, payload.Fields, 35, "MsgType", "STRING", "D", "NewOrderSingle")
+	assertFieldView(t, payload.Fields, 9001, "SessionToken", "STRING", redactedValue, "")
 }
 
 func TestRendererCanShowSensitiveValuesWhenRequested(t *testing.T) {
@@ -138,16 +139,17 @@ func readFixture(t *testing.T, name string) string {
 func assertFieldView(t *testing.T, fields []struct {
 	Tag   int    `json:"tag"`
 	Name  string `json:"name"`
+	Type  string `json:"type"`
 	Value string `json:"value"`
 	Enum  string `json:"enum"`
-}, tag int, name string, value string, enum string) {
+}, tag int, name string, fieldType string, value string, enum string) {
 	t.Helper()
 	for _, field := range fields {
 		if field.Tag != tag {
 			continue
 		}
-		if field.Name != name || field.Value != value || field.Enum != enum {
-			t.Fatalf("field %d = %+v, want name=%q value=%q enum=%q", tag, field, name, value, enum)
+		if field.Name != name || field.Type != fieldType || field.Value != value || field.Enum != enum {
+			t.Fatalf("field %d = %+v, want name=%q type=%q value=%q enum=%q", tag, field, name, fieldType, value, enum)
 		}
 		return
 	}

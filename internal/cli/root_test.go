@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,7 +25,7 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out.String(), "FIX protocol testing CLI") {
 		t.Fatalf("help output = %q, want root help", out.String())
 	}
-	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order", "shell", "run"} {
+	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order", "raw", "inspect", "shell", "run"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want command %q", out.String(), want)
 		}
@@ -60,6 +62,76 @@ func TestRunHelpShowsScenarioFlags(t *testing.T) {
 	for _, want := range []string{"Run FIX scenario steps", "--json", "--result-file", "--output-file"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
+func TestRawSendHelpShowsFlags(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"raw", "send", "--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"Send a raw FIX message", "--msg-type", "--tag"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("help output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
+func TestRawSendRejectsProtectedTagBeforeConfigLoad(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"raw", "send", "--msg-type", "D", "--tag", "35=Z"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	err := command.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("ExecuteContext() error = nil, want protected tag error")
+	}
+	if !strings.Contains(err.Error(), "不允许覆盖协议字段 35") {
+		t.Fatalf("ExecuteContext() error = %v, want protected tag error", err)
+	}
+}
+
+func TestInspectRawHelpShowsCommand(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"inspect", "raw", "--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Inspect a raw FIX message") {
+		t.Fatalf("help output = %q, want inspect raw help", out.String())
+	}
+}
+
+func TestInspectRawRendersCustomTags(t *testing.T) {
+	configFile := writeInspectConfig(t)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"--config", configFile, "inspect", "raw", "8=FIX.4.4|9=18|35=Z|9002=ALPHA|10=000|"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"Desk", "ALPHA", "Alpha desk"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("inspect output = %q, want %q", out.String(), want)
 		}
 	}
 }
@@ -190,4 +262,23 @@ func TestConfigValidate(t *testing.T) {
 	if !strings.Contains(out.String(), "configuration is valid") {
 		t.Fatalf("validate output = %q, want success message", out.String())
 	}
+}
+
+func writeInspectConfig(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "inspect-config.toml")
+	content := `
+[[profile.custom_tags]]
+tag = 9002
+name = "Desk"
+type = "STRING"
+required = false
+sensitive = false
+description = "Mock trading desk identifier"
+enums = { ALPHA = "Alpha desk" }
+`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	return path
 }
