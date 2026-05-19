@@ -48,7 +48,7 @@ func Parse(line string) (Command, error) {
 		return noArgCommand(fields, Command{Kind: CommandLogout})
 	case "heartbeat":
 		return noArgCommand(fields, Command{Kind: CommandHeartbeat})
-	case "exit":
+	case "exit", "quit":
 		return noArgCommand(fields, Command{Kind: CommandExit})
 	case "test-request":
 		return parseTestRequest(fields[1:])

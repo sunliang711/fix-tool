@@ -299,7 +299,7 @@ func TestInspectRawRendersCustomFieldDefs(t *testing.T) {
 	}
 }
 
-func TestShellCommandReadsInjectedInput(t *testing.T) {
+func TestShellCommandRequiresInteractiveTerminal(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	command := NewRootCommand(Args{"shell"}, IO{
@@ -308,11 +308,12 @@ func TestShellCommandReadsInjectedInput(t *testing.T) {
 		ErrOut: &errOut,
 	}, zerolog.Nop())
 
-	if err := command.ExecuteContext(context.Background()); err != nil {
-		t.Fatalf("ExecuteContext() error = %v", err)
+	err := command.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("ExecuteContext() error = nil, want interactive terminal error")
 	}
-	if !strings.Contains(out.String(), "fix-tool> ") {
-		t.Fatalf("shell output = %q, want prompt", out.String())
+	if !strings.Contains(err.Error(), "shell requires an interactive terminal") {
+		t.Fatalf("ExecuteContext() error = %v, want interactive terminal error", err)
 	}
 }
 

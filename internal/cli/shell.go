@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"io"
+	"fmt"
 	"os"
 
 	"fix-tool/internal/admin"
@@ -52,13 +52,15 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		r.logger.Error().Err(err).Msg("configuration validation failed")
 		return err
 	}
+	if !isTerminal(cmd.InOrStdin()) || !isTerminal(cmd.OutOrStdout()) {
+		return fmt.Errorf("shell requires an interactive terminal")
+	}
 	prompt := "fix-tool> "
+	lineReader := toolshell.NewTUILineReader()
+	tuiOutput := toolshell.NewTUIOutputWriter()
 	transcript := toolshell.NewTranscriptRecorder(prompt)
-	out := transcript.Wrap(cmd.OutOrStdout())
-	errOut := transcript.Wrap(cmd.ErrOrStderr())
-	promptLogWriter := toolshell.NewPromptLogWriter(errOut, out, prompt)
-	lineReader := newShellLineReader(cmd.InOrStdin(), cmd.OutOrStdout(), promptLogWriter)
-	configuredLogger, err := logging.New(promptLogWriter, cfg.Log)
+	out := transcript.Wrap(tuiOutput)
+	configuredLogger, err := logging.NewWithOptions(out, cfg.Log, logging.Options{NoColor: true})
 	if err != nil {
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
@@ -78,7 +80,7 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 	runner := toolshell.NewRunner(toolshell.Options{
 		In:         cmd.InOrStdin(),
 		Out:        out,
-		ErrOut:     errOut,
+		ErrOut:     out,
 		LineReader: lineReader,
 		Admin:      admin.NewService(manager, admin.Options{KeepSession: true, SessionState: state}),
 		Order:      order.NewService(manager, order.Options{KeepSession: true, SessionState: state}),
@@ -87,20 +89,19 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		Transcript: transcript,
 		Format:     render.Format(cfg.Output.Format),
 		Prompt:     prompt,
-		PromptCtl:  promptLogWriter,
 	})
-	if err := runner.Run(cmd.Context()); err != nil {
-		configuredLogger.Error().Err(err).Msg("shell command failed")
+	if err := toolshell.RunTUI(cmd.Context(), toolshell.TUIOptions{
+		In:         cmd.InOrStdin(),
+		Out:        cmd.OutOrStdout(),
+		Prompt:     prompt,
+		Runner:     runner,
+		LineReader: lineReader,
+		Output:     tuiOutput,
+	}); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "shell command failed: %v\n", err)
 		return err
 	}
 	return nil
-}
-
-func newShellLineReader(in io.Reader, out io.Writer, promptCtl toolshell.PromptController) toolshell.LineReader {
-	if !isTerminal(in) || !isTerminal(out) {
-		return nil
-	}
-	return toolshell.NewHistoryLineReader(promptCtl)
 }
 
 func isTerminal(value any) bool {

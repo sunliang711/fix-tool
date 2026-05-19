@@ -55,7 +55,6 @@ type Options struct {
 	Transcript  *TranscriptRecorder
 	Format      render.Format
 	Prompt      string
-	PromptCtl   PromptController
 	StopTimeout time.Duration
 }
 
@@ -72,7 +71,6 @@ type Runner struct {
 	transcript  *TranscriptRecorder
 	format      render.Format
 	prompt      string
-	promptCtl   PromptController
 	stopTimeout time.Duration
 }
 
@@ -119,7 +117,6 @@ func NewRunner(options Options) *Runner {
 		transcript:  options.Transcript,
 		format:      options.Format,
 		prompt:      options.Prompt,
-		promptCtl:   options.PromptCtl,
 		stopTimeout: stopTimeout,
 	}
 }
@@ -151,10 +148,8 @@ func (r *Runner) Run(ctx context.Context) (err error) {
 			if _, err := fmt.Fprint(r.out, r.prompt); err != nil {
 				return err
 			}
-			r.setPromptActive(true)
 		}
 		result, ok, err := r.nextScanResult(ctx, results, readDone)
-		r.setPromptActive(false)
 		if err != nil {
 			return err
 		}
@@ -226,30 +221,41 @@ func (r *Runner) renderHelp() error {
 }
 
 const shellHelpText = `Commands:
-  help, ?                                      Show this help
-  logon                                        Log on and keep the shell session
-  logout                                       Send Logout
-  heartbeat                                    Send Heartbeat
-  test-request --id <id>                       Send TestRequest
-  order new --symbol <s> --side <buy|sell> --qty <q> [--cl-ord-id <id>] [--price <p>] [--ord-type <type>] [--time-in-force <tif>] [--tag <tag=value>]
-  order cancel --orig-cl-ord-id <id> --symbol <s> --side <buy|sell> [--cl-ord-id <id>] [--order-id <id>] [--tag <tag=value>]
-  order replace --orig-cl-ord-id <id> --symbol <s> --side <buy|sell> --qty <q> --price <p> [--cl-ord-id <id>] [--order-id <id>] [--ord-type <type>] [--time-in-force <tif>] [--tag <tag=value>]
-  save <file>                                  Start saving shell transcript
-  save stop                                    Stop saving shell transcript
-  save status                                  Show save status
-  trace list                                   Show recorded traces
-  exit                                         Exit shell
+  help, ?          Show this help
+  logon            Log on and keep the shell session
+  logout           Send Logout
+  heartbeat        Send Heartbeat
+  test-request     Send TestRequest
+    required: --id <id>
+
+  order new        Send NewOrderSingle
+    required: --symbol <s> --side <buy|sell> --qty <q>
+    optional: --cl-ord-id <id> --price <p> --ord-type <type>
+              --time-in-force <tif> --tag <tag=value>
+
+  order cancel     Send OrderCancelRequest
+    required: --orig-cl-ord-id <id> --symbol <s> --side <buy|sell>
+    optional: --cl-ord-id <id> --order-id <id> --tag <tag=value>
+
+  order replace    Send OrderCancelReplaceRequest
+    required: --orig-cl-ord-id <id> --symbol <s> --side <buy|sell>
+              --qty <q> --price <p>
+    optional: --cl-ord-id <id> --order-id <id> --ord-type <type>
+              --time-in-force <tif> --tag <tag=value>
+
+  save <file>      Start saving shell transcript
+  save stop        Stop saving shell transcript
+  save status      Show save status
+  trace list       Show recorded traces
+  exit, quit       Exit shell
 
 Keys:
-  Up/Down                                      Browse command history
+  Up/Down          Browse command history
+  PgUp/PgDown      Scroll TUI logs
+  F2               Toggle mouse wheel scrolling
+  Ctrl+L           Clear TUI logs
+  Ctrl+C, Ctrl+D   Exit TUI shell
 `
-
-func (r *Runner) setPromptActive(active bool) {
-	if r.promptCtl == nil {
-		return
-	}
-	r.promptCtl.SetPromptActive(active)
-}
 
 func (r *Runner) startScan(ctx context.Context) (<-chan scanResult, <-chan struct{}) {
 	results := make(chan scanResult)

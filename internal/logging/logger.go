@@ -13,7 +13,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type Options struct {
+	NoColor bool
+}
+
 func New(output io.Writer, cfg config.LogConfig) (zerolog.Logger, error) {
+	return NewWithOptions(output, cfg, Options{})
+}
+
+func NewWithOptions(output io.Writer, cfg config.LogConfig, options Options) (zerolog.Logger, error) {
 	if output == nil {
 		output = os.Stderr
 	}
@@ -23,7 +31,7 @@ func New(output io.Writer, cfg config.LogConfig) (zerolog.Logger, error) {
 	}
 	writer := output
 	if cfg.Format == "console" {
-		writer = newConsoleWriter(output)
+		writer = newConsoleWriter(output, options.NoColor)
 	}
 	return zerolog.New(writer).Level(level).With().Timestamp().Logger(), nil
 }
@@ -42,9 +50,10 @@ func NewDefault(output io.Writer) zerolog.Logger {
 	return zerolog.New(output).Level(zerolog.InfoLevel).With().Timestamp().Logger()
 }
 
-func newConsoleWriter(output io.Writer) zerolog.ConsoleWriter {
+func newConsoleWriter(output io.Writer, noColor bool) zerolog.ConsoleWriter {
 	return zerolog.ConsoleWriter{
 		Out:           output,
+		NoColor:       noColor,
 		TimeFormat:    time.RFC3339,
 		FieldsExclude: []string{"pretty_message", "raw_message"},
 		FormatExtra:   writeConsoleMessageBlocks,
@@ -76,15 +85,63 @@ func consoleMessageLines(message string, splitFields bool) []string {
 		return []string{message}
 	}
 	parts := strings.Split(message, "|")
-	lines := make([]string, 0, len(parts))
+	fields := make([]consolePrettyField, 0, len(parts))
+	maxNameWidth := 0
+	maxTagWidth := 0
 	for _, part := range parts {
 		if part == "" {
 			continue
 		}
-		lines = append(lines, part)
+		field := parseConsolePrettyField(part)
+		fields = append(fields, field)
+		if field.ok {
+			if len(field.name) > maxNameWidth {
+				maxNameWidth = len(field.name)
+			}
+			if len(field.tag) > maxTagWidth {
+				maxTagWidth = len(field.tag)
+			}
+		}
 	}
-	if len(lines) == 0 {
+	if len(fields) == 0 {
 		return []string{message}
 	}
+	lines := make([]string, 0, len(fields))
+	for _, field := range fields {
+		lines = append(lines, consolePrettyFieldLine(field, maxNameWidth, maxTagWidth))
+	}
 	return lines
+}
+
+type consolePrettyField struct {
+	tag   string
+	name  string
+	value string
+	raw   string
+	ok    bool
+}
+
+func parseConsolePrettyField(field string) consolePrettyField {
+	tag, rest, ok := strings.Cut(field, "(")
+	if !ok {
+		return consolePrettyField{raw: field}
+	}
+	name, value, ok := strings.Cut(rest, ")=")
+	if !ok {
+		return consolePrettyField{raw: field}
+	}
+	return consolePrettyField{
+		tag:   tag,
+		name:  name,
+		value: value,
+		raw:   field,
+		ok:    true,
+	}
+}
+
+func consolePrettyFieldLine(field consolePrettyField, nameWidth int, tagWidth int) string {
+	if !field.ok {
+		return field.raw
+	}
+	return fmt.Sprintf("%-*s %*s = %s", nameWidth, field.name, tagWidth, field.tag, field.value)
 }

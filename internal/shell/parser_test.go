@@ -22,6 +22,7 @@ func TestParseCommands(t *testing.T) {
 		{name: "save-stop", line: "save stop", want: CommandSaveStop},
 		{name: "save-status", line: "save status", want: CommandSaveStatus},
 		{name: "exit", line: "exit", want: CommandExit},
+		{name: "quit", line: "quit", want: CommandExit},
 	}
 
 	for _, tt := range tests {

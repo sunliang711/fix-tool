@@ -40,7 +40,7 @@ func TestConsoleWriterRendersFIXMessagesAsBlocks(t *testing.T) {
 	}
 	for _, want := range []string{
 		"view=pretty",
-		"\n  pretty_message:\n    8(BeginString)=FIX.4.4\n    9(BodyLength)=60\n    35(MsgType:Heartbeat)=0",
+		"\n  pretty_message:\n    BeginString        8 = FIX.4.4\n    BodyLength         9 = 60\n    MsgType:Heartbeat 35 = 0",
 		"view=raw",
 		"\n  raw_message:\n    8=FIX.4.4|9=60|35=0|",
 	} {

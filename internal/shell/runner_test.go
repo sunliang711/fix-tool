@@ -120,6 +120,25 @@ func TestRunnerExitStopsSession(t *testing.T) {
 	}
 }
 
+func TestRunnerQuitStopsSession(t *testing.T) {
+	manager := &runnerFakeManager{}
+	runner := NewRunner(Options{
+		In:      strings.NewReader("quit\n"),
+		Out:     &bytes.Buffer{},
+		ErrOut:  &bytes.Buffer{},
+		Admin:   &stubAdminService{},
+		Order:   &stubOrderService{},
+		Manager: manager,
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if manager.stops != 1 {
+		t.Fatalf("stops = %d, want 1", manager.stops)
+	}
+}
+
 func TestRunnerHelpCommand(t *testing.T) {
 	var out bytes.Buffer
 	runner := NewRunner(Options{
@@ -134,13 +153,24 @@ func TestRunnerHelpCommand(t *testing.T) {
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Commands:", "help, ?", "logon", "order new", "save <file>", "trace list", "exit", "Up/Down"} {
+	for _, want := range []string{"Commands:", "help, ?", "logon", "order new", "save <file>", "trace list", "exit, quit", "Up/Down", "F2"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("out = %q, want %q", out.String(), want)
 		}
 	}
+	if strings.Contains(out.String(), "F3") {
+		t.Fatalf("out = %q, want no F3 heartbeat shortcut", out.String())
+	}
 	if count := strings.Count(out.String(), "Commands:"); count != 2 {
 		t.Fatalf("help count = %d, want 2 in %q", count, out.String())
+	}
+}
+
+func TestShellHelpTextUsesShortLines(t *testing.T) {
+	for _, line := range strings.Split(shellHelpText, "\n") {
+		if len(line) > 90 {
+			t.Fatalf("help line too long: %q", line)
+		}
 	}
 }
 
