@@ -77,6 +77,20 @@ func TestParseRawRejectsInvalidField(t *testing.T) {
 	}
 }
 
+func TestParseRawRejectsEmptyMessage(t *testing.T) {
+	_, err := ParseRaw("  ")
+	if err == nil || !strings.Contains(err.Error(), "empty message") {
+		t.Fatalf("ParseRaw() error = %v, want empty message error", err)
+	}
+}
+
+func TestDisplayRawUsesDefaultDelimiter(t *testing.T) {
+	got := DisplayRaw("35=D\x0111=C001\x01", "")
+	if got != "35=D|11=C001|" {
+		t.Fatalf("DisplayRaw() = %q, want default delimiter", got)
+	}
+}
+
 func readMessage(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "messages", name))

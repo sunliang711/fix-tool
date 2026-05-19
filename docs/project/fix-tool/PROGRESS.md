@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- 阶段：任务 08 已完成，任务 07 尚未开始。
+- 阶段：任务 09 已完成，任务 07 尚未开始。
 - 当前版本：规划 V0.1。
 - 最后更新：2026-05-19。
 
@@ -28,15 +28,15 @@
 | 06 交互式 shell | 已完成 | 已完成 shell 命令、有限命令解析、共享 session、trace list、错误不中断、退出关闭和测试 |
 | 07 raw send、inspect raw、自定义 tag overlay | 未开始 | 依赖任务 03、05 |
 | 08 scenario runner 与断言 | 已完成 | 已完成 YAML scenario runner、顺序执行、基础断言、JSON 结果导出、样例场景和测试；raw action 等待任务 07 接入 |
-| 09 测试、mock acceptor、样例配置 | 未开始 | 依赖任务 01-08 |
+| 09 测试、mock acceptor、样例配置 | 已完成 | 已完成测试覆盖矩阵、mock acceptor、集成测试、安全样例配置、字典样例、场景样例和测试说明 |
 | 10 打包发布与使用文档 | 未开始 | 依赖任务 01-09 |
 
 ## 待确认事项
 
 - 是否需要 Windows 交付包。
 - 是否需要内置某个交易所或券商的默认字典样例。
-- 是否需要在第一期提供 mock acceptor，还是放到 P1。
+- mock acceptor 已在任务 09 提供基础链路验证，仍不代表真实网关行为。
 
 ## 下一步
 
-根据安排补做 `task-07-raw-and-custom-tags.md`，或继续进入 `task-09-testing-and-mock.md`。
+根据安排补做 `task-07-raw-and-custom-tags.md`，或继续进入 `task-10-release-docs.md`。

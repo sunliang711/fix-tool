@@ -68,6 +68,29 @@ func TestBuildOrderMessages(t *testing.T) {
 			},
 		},
 		{
+			name: "market-new-order-omits-price",
+			build: func() (*quickfix.Message, error) {
+				return BuildNewOrderSingle(NewOrderSingleRequest{
+					ClOrdID:  "C004",
+					Symbol:   "AAPL",
+					Side:     "buy",
+					OrderQty: "100",
+					OrdType:  "market",
+					Now:      now,
+				})
+			},
+			wantType: MsgTypeNewOrderSingle,
+			wantBody: map[int]string{
+				TagClOrdID:      "C004",
+				TagSymbol:       "AAPL",
+				TagSide:         SideBuy,
+				TagOrderQty:     "100",
+				TagOrdType:      OrdTypeMarket,
+				TagTransactTime: "20260519-12:00:01.000",
+			},
+			emptyBody: []int{TagPrice},
+		},
+		{
 			name: "replace",
 			build: func() (*quickfix.Message, error) {
 				return BuildOrderCancelReplaceRequest(OrderCancelReplaceRequest{

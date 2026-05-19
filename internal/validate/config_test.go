@@ -1,6 +1,7 @@
 package validate_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -36,6 +37,21 @@ func TestAppConfigRejectsInvalidHeartbeatInterval(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "heartbeat_interval") {
 		t.Fatalf("AppConfig() error = %v, want heartbeat error", err)
+	}
+}
+
+func TestSampleMockConfigValidates(t *testing.T) {
+	cfg, err := config.Load(config.LoadOptions{
+		ConfigFile: filepath.Clean("../../testdata/configs/mock-acceptor.toml"),
+	})
+	if err != nil {
+		t.Fatalf("Load() sample error = %v", err)
+	}
+	if err := validate.AppConfig(cfg); err != nil {
+		t.Fatalf("AppConfig() sample error = %v", err)
+	}
+	if cfg.Profile.Username != "" || cfg.Profile.Password != "" {
+		t.Fatalf("sample credentials should be empty")
 	}
 }
 

@@ -1,0 +1,21 @@
+# Custom tag overlay sample for local mock scenarios and documentation.
+
+[[profile.custom_tags]]
+tag = 9001
+name = "SessionToken"
+type = "STRING"
+required = false
+sensitive = true
+description = "Placeholder sensitive token field for rendering tests"
+
+[[profile.custom_tags]]
+tag = 9002
+name = "Desk"
+type = "STRING"
+required = false
+sensitive = false
+description = "Mock trading desk identifier"
+
+[profile.custom_tags.enums]
+ALPHA = "Alpha desk"
+BETA = "Beta desk"

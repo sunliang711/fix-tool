@@ -71,6 +71,19 @@ func TestSampleScenarioLoads(t *testing.T) {
 	}
 }
 
+func TestMockAcceptorSampleScenarioLoads(t *testing.T) {
+	scenarioValue, err := Load(filepath.Clean("../../testdata/scenarios/mock-acceptor-basic.yaml"))
+	if err != nil {
+		t.Fatalf("Load() sample error = %v", err)
+	}
+	if scenarioValue.Name != "mock-acceptor-basic" {
+		t.Fatalf("sample name = %q, want mock-acceptor-basic", scenarioValue.Name)
+	}
+	if len(scenarioValue.Steps) != 6 {
+		t.Fatalf("sample steps = %d, want 6", len(scenarioValue.Steps))
+	}
+}
+
 func TestLoadRejectsUnsupportedFileType(t *testing.T) {
 	_, err := Load("scenario.toml")
 	if err == nil || !strings.Contains(err.Error(), "only YAML is supported") {
