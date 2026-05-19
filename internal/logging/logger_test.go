@@ -2,6 +2,7 @@ package logging
 
 import (
 	"bytes"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -31,7 +32,7 @@ func TestConsoleWriterRendersFIXMessagesAsBlocks(t *testing.T) {
 		Str("view", "raw").
 		Msg("-> Heartbeat(0)")
 
-	got := out.String()
+	got := stripANSICodes(out.String())
 	for _, unwanted := range []string{"pretty_message=", "raw_message="} {
 		if strings.Contains(got, unwanted) {
 			t.Fatalf("log output = %q, want no inline %q", got, unwanted)
@@ -47,6 +48,11 @@ func TestConsoleWriterRendersFIXMessagesAsBlocks(t *testing.T) {
 			t.Fatalf("log output = %q, want %q", got, want)
 		}
 	}
+}
+
+func stripANSICodes(value string) string {
+	pattern := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return pattern.ReplaceAllString(value, "")
 }
 
 func TestJSONWriterKeepsFIXMessageFields(t *testing.T) {
