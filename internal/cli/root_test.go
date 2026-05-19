@@ -86,6 +86,35 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+func TestRootRejectsUnknownFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args Args
+	}{
+		{name: "before-command", args: Args{"--bad-flag", "config", "validate"}},
+		{name: "after-command", args: Args{"config", "validate", "--bad-flag"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			command := NewRootCommand(tt.args, IO{
+				Out:    &out,
+				ErrOut: &errOut,
+			}, zerolog.Nop())
+
+			err := command.ExecuteContext(context.Background())
+			if err == nil {
+				t.Fatal("ExecuteContext() error = nil, want unknown flag error")
+			}
+			if !strings.Contains(err.Error(), "unknown flag: --bad-flag") {
+				t.Fatalf("ExecuteContext() error = %v, want unknown flag error", err)
+			}
+		})
+	}
+}
+
 func TestRawSendHelpShowsFlags(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer

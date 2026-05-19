@@ -132,13 +132,15 @@ func TestZerologLogFactoryRedactsQuickFIXMessages(t *testing.T) {
 	if !strings.Contains(got, "pretty_message") {
 		t.Fatalf("log output = %q, want pretty message", got)
 	}
+	if strings.Contains(got, "raw_message") {
+		t.Fatalf("log output = %q, want no raw message at debug level", got)
+	}
 	for _, want := range []string{
-		"FIX client -> server",
-		`"direction":"client_to_server"`,
-		`"msg_type":"A"`,
-		`"msg_name":"Logon"`,
+		"-> Logon(A)",
+		`"direction":"out"`,
+		`"msg_code":"A"`,
+		`"msg_type":"Logon"`,
 		"35(MsgType:Logon)=A|",
-		"raw_message",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log output = %q, want %q", got, want)
@@ -162,14 +164,45 @@ func TestZerologLogFactoryLogsServerToClientMessages(t *testing.T) {
 
 	got := out.String()
 	for _, want := range []string{
-		"FIX server -> client",
-		`"direction":"server_to_client"`,
-		`"msg_type":"5"`,
-		`"msg_name":"Logout"`,
-		"35(MsgType:Logout)=5|",
-		"58(Text)=missing username|",
+		"<- Logout(5)",
+		`"direction":"in"`,
+		`"msg_code":"5"`,
+		`"msg_type":"Logout"`,
+		`"reason":"missing username"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log output = %q, want %q", got, want)
+		}
+	}
+	for _, unwanted := range []string{"raw_message", "pretty_message"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("log output = %q, want no %q at info level", got, unwanted)
+		}
+	}
+}
+
+func TestZerologLogFactoryLogsRawMessagesAtTraceLevel(t *testing.T) {
+	var out bytes.Buffer
+	logger := zerolog.New(&out).Level(zerolog.TraceLevel)
+	logFactory := newZerologLogFactory(logger, validProfile())
+	log, err := logFactory.Create()
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	message := quickfix.NewMessage()
+	message.Header.SetString(tagMsgType, "5")
+	message.Body.SetString(quickfix.Tag(58), "missing username")
+
+	log.OnIncoming([]byte(message.String()))
+
+	got := out.String()
+	for _, want := range []string{
+		"<- Logout(5)",
+		"fix raw <-",
 		"raw_message",
 		"pretty_message",
+		"35=5|",
+		"35(MsgType:Logout)=5|",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log output = %q, want %q", got, want)

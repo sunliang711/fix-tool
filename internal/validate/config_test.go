@@ -16,6 +16,14 @@ func TestAppConfigValid(t *testing.T) {
 	}
 }
 
+func TestAppConfigAllowsTraceLogLevel(t *testing.T) {
+	cfg := validConfig()
+	cfg.Log.Level = "trace"
+	if err := validate.AppConfig(cfg); err != nil {
+		t.Fatalf("AppConfig() error = %v", err)
+	}
+}
+
 func TestAppConfigRejectsInvalidPort(t *testing.T) {
 	cfg := validConfig()
 	cfg.Profile.Port = 0

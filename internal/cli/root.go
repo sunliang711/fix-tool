@@ -44,11 +44,12 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	}
 	flags := &flagState{}
 	root := &cobra.Command{
-		Use:           "fix-tool",
-		Short:         "FIX protocol testing CLI",
-		Version:       version.Version,
-		SilenceUsage:  true,
-		SilenceErrors: true,
+		Use:              "fix-tool",
+		Short:            "FIX protocol testing CLI",
+		Version:          version.Version,
+		TraverseChildren: true,
+		SilenceUsage:     true,
+		SilenceErrors:    true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},

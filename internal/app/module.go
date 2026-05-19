@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -34,6 +35,7 @@ func Run(ctx context.Context, args []string) int {
 				OnStart: func(startCtx context.Context) error {
 					if err := command.ExecuteContext(startCtx); err != nil {
 						exitCode = 1
+						_, _ = fmt.Fprintln(command.ErrOrStderr(), err)
 						return err
 					}
 					return nil

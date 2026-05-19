@@ -42,6 +42,8 @@ fix-tool --config config.toml --private private.toml config validate
 fix-tool --config config.toml --private private.toml --log-level debug logon
 ```
 
+需要查看 raw FIX 报文时，把 `--log-level` 临时改为 `trace`。
+
 重点检查：
 
 - host、port 是否能从当前机器访问。

@@ -24,7 +24,7 @@ type AppSettings struct {
 }
 
 type LogConfig struct {
-	Level  string `mapstructure:"level" validate:"required,oneof=debug info warn error"`
+	Level  string `mapstructure:"level" validate:"required,oneof=trace debug info warn error"`
 	Format string `mapstructure:"format" validate:"required,oneof=console json"`
 }
 

@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	directionClientToServer = "client_to_server"
-	directionServerToClient = "server_to_client"
+	directionOut = "out"
+	directionIn  = "in"
 )
 
 type zerologLogFactory struct {
@@ -56,11 +56,11 @@ func (f zerologLogFactory) CreateSessionLog(sessionID quickfix.SessionID) (quick
 }
 
 func (l zerologLog) OnIncoming(message []byte) {
-	l.logMessage(directionServerToClient, message)
+	l.logMessage(directionIn, message)
 }
 
 func (l zerologLog) OnOutgoing(message []byte) {
-	l.logMessage(directionClientToServer, message)
+	l.logMessage(directionOut, message)
 }
 
 func (l zerologLog) OnEvent(message string) {
@@ -85,24 +85,29 @@ func (l zerologLog) OnEventf(format string, values ...interface{}) {
 
 func (l zerologLog) logMessage(direction string, message []byte) {
 	raw := redactFIXMessage(string(message), l.sensitiveTags)
+	parsed, err := trace.ParseRaw(raw)
+	if err != nil {
+		l.logUnparsedMessage(direction, raw, err)
+		return
+	}
+	msgCode := firstParsedValue(parsed.Fields, int(tagMsgType))
+	msgName := l.messageName(msgCode)
 	event := l.logger.Info().
 		Str("source", "quickfix").
-		Str("direction", direction).
-		Str("raw_message", trace.DisplayRaw(raw, "|")).
-		Str("pretty_message", l.prettyFIXMessage(raw))
+		Str("direction", direction)
 	if l.session != "" {
 		event = event.Str("session", l.session)
 	}
-	if msgType := rawValue(raw, int(tagMsgType)); msgType != "" {
-		event = event.Str("msg_type", msgType)
-		if l.dictionary != nil {
-			msgName, ok := l.dictionary.ExplainValue(int(tagMsgType), msgType)
-			if ok {
-				event = event.Str("msg_name", msgName)
-			}
-		}
+	if msgCode != "" {
+		event = event.Str("msg_code", msgCode)
 	}
-	event.Msg(l.messageLogTitle(direction))
+	if msgName != "" {
+		event = event.Str("msg_type", msgName)
+	}
+	event = l.appendSummaryFields(event, parsed.Fields)
+	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
+	l.logPrettyMessage(direction, raw, msgName, msgCode)
+	l.logRawMessage(direction, raw)
 }
 
 func (l zerologLog) isWarningEvent(message string) bool {
@@ -132,19 +137,6 @@ func contains(value string, part string) bool {
 	return strings.Contains(value, part)
 }
 
-func rawValue(raw string, tag int) string {
-	parsed, err := trace.ParseRaw(raw)
-	if err != nil {
-		return ""
-	}
-	for _, field := range parsed.Fields {
-		if field.Tag == tag {
-			return field.Value
-		}
-	}
-	return ""
-}
-
 func (l zerologLog) appendMessageSummary(event *zerolog.Event, raw string) *zerolog.Event {
 	parsed, err := trace.ParseRaw(raw)
 	if err != nil {
@@ -165,6 +157,41 @@ func (l zerologLog) appendMessageSummary(event *zerolog.Event, raw string) *zero
 	return event
 }
 
+func (l zerologLog) appendSummaryFields(event *zerolog.Event, fields []trace.Field) *zerolog.Event {
+	if seq := firstParsedValue(fields, 34); seq != "" {
+		event = event.Str("seq", seq)
+	}
+	if sender := firstParsedValue(fields, 49); sender != "" {
+		event = event.Str("sender", sender)
+	}
+	if target := firstParsedValue(fields, 56); target != "" {
+		event = event.Str("target", target)
+	}
+	for _, field := range []struct {
+		tag int
+		key string
+	}{
+		{tag: 58, key: "reason"},
+		{tag: 11, key: "cl_ord_id"},
+		{tag: 41, key: "orig_cl_ord_id"},
+		{tag: 37, key: "order_id"},
+		{tag: 17, key: "exec_id"},
+		{tag: 55, key: "symbol"},
+		{tag: 54, key: "side"},
+		{tag: 38, key: "qty"},
+		{tag: 44, key: "price"},
+		{tag: 40, key: "ord_type"},
+		{tag: 59, key: "time_in_force"},
+		{tag: 150, key: "exec_type"},
+		{tag: 39, key: "ord_status"},
+	} {
+		if value := firstParsedValue(fields, field.tag); value != "" {
+			event = event.Str(field.key, l.displayValue(field.tag, value))
+		}
+	}
+	return event
+}
+
 func firstParsedValue(fields []trace.Field, tag int) string {
 	for _, field := range fields {
 		if field.Tag == tag {
@@ -174,15 +201,91 @@ func firstParsedValue(fields []trace.Field, tag int) string {
 	return ""
 }
 
-func (l zerologLog) messageLogTitle(direction string) string {
-	switch direction {
-	case directionClientToServer:
-		return "FIX client -> server"
-	case directionServerToClient:
-		return "FIX server -> client"
-	default:
-		return "FIX message"
+func (l zerologLog) logUnparsedMessage(direction string, raw string, err error) {
+	event := l.logger.Info().
+		Str("source", "quickfix").
+		Str("direction", direction).
+		Err(err)
+	if l.session != "" {
+		event = event.Str("session", l.session)
 	}
+	event.Msg(l.messageLogTitle(direction, "", ""))
+	l.logRawMessage(direction, raw)
+}
+
+func (l zerologLog) logPrettyMessage(direction string, raw string, msgName string, msgCode string) {
+	if l.logger.GetLevel() > zerolog.DebugLevel {
+		return
+	}
+	event := l.logger.Debug().
+		Str("source", "quickfix").
+		Str("direction", direction).
+		Str("pretty_message", l.prettyFIXMessage(raw))
+	if l.session != "" {
+		event = event.Str("session", l.session)
+	}
+	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
+}
+
+func (l zerologLog) logRawMessage(direction string, raw string) {
+	if l.logger.GetLevel() > zerolog.TraceLevel {
+		return
+	}
+	event := l.logger.Trace().
+		Str("source", "quickfix").
+		Str("direction", direction).
+		Str("raw_message", trace.DisplayRaw(raw, "|"))
+	if l.session != "" {
+		event = event.Str("session", l.session)
+	}
+	event.Msg("fix raw " + l.directionArrow(direction))
+}
+
+func (l zerologLog) messageLogTitle(direction string, msgName string, msgCode string) string {
+	title := l.directionArrow(direction)
+	if msgName == "" && msgCode == "" {
+		return title + " FIX message"
+	}
+	if msgName == "" {
+		return title + " MsgType(" + msgCode + ")"
+	}
+	if msgCode == "" {
+		return title + " " + msgName
+	}
+	return title + " " + msgName + "(" + msgCode + ")"
+}
+
+func (l zerologLog) directionArrow(direction string) string {
+	switch direction {
+	case directionOut:
+		return "->"
+	case directionIn:
+		return "<-"
+	default:
+		return "--"
+	}
+}
+
+func (l zerologLog) messageName(msgCode string) string {
+	if msgCode == "" || l.dictionary == nil {
+		return ""
+	}
+	msgName, ok := l.dictionary.ExplainValue(int(tagMsgType), msgCode)
+	if !ok {
+		return ""
+	}
+	return msgName
+}
+
+func (l zerologLog) displayValue(tag int, value string) string {
+	if l.dictionary == nil {
+		return value
+	}
+	display, ok := l.dictionary.ExplainValue(tag, value)
+	if !ok {
+		return value
+	}
+	return display
 }
 
 func (l zerologLog) embeddedFIXMessage(message string) (string, bool) {
