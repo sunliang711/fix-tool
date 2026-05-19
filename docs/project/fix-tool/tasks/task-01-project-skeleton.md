@@ -9,8 +9,8 @@
 - 创建 `cmd/fix-tool/main.go` 作为唯一入口。
 - 创建 `internal/app` 注册 Fx module。
 - 创建 `internal/cli` 定义 root command、全局 flags、版本命令。
-- 创建 `internal/config` 统一加载默认配置、用户配置、私有配置、环境变量和 flags。
-- 创建 `config/default.toml` 作为默认配置。
+- 创建 `internal/config` 统一加载内嵌默认配置、用户配置、私有配置、环境变量和 flags。
+- 创建 `config/default.toml` 作为内嵌默认配置源文件。
 - 创建 `internal/validate` 对强类型配置做 fail fast 校验。
 
 ## 验收标准
@@ -38,4 +38,3 @@
 ## 风险
 
 - 配置模型过早复杂化会拖慢后续开发。第一期只实现 P0 必需字段，扩展字段预留结构。
-

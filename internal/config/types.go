@@ -1,10 +1,11 @@
 package config
 
 const (
-	EnvPrefix         = "FIX_TOOL"
-	DefaultConfigFile = "config/default.toml"
-	UserConfigFile    = "config.toml"
-	PrivateConfigFile = "private.toml"
+	EnvPrefix                   = "FIX_TOOL"
+	DefaultConfigFile           = "config/default.toml"
+	EmbeddedDefaultConfigSource = "embedded:" + DefaultConfigFile
+	UserConfigFile              = "config.toml"
+	PrivateConfigFile           = "private.toml"
 )
 
 type AppConfig struct {
@@ -13,6 +14,7 @@ type AppConfig struct {
 	Profile ProfileConfig `mapstructure:"profile" validate:"required"`
 	Output  OutputConfig  `mapstructure:"output" validate:"required"`
 
+	DefaultSource  string   `mapstructure:"-"`
 	LoadedFiles    []string `mapstructure:"-"`
 	DeprecatedKeys []string `mapstructure:"-"`
 }

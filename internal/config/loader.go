@@ -1,11 +1,14 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	fixtool "fix-tool"
 
 	"github.com/spf13/viper"
 )
@@ -26,15 +29,19 @@ func Load(opts LoadOptions) (*AppConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	setDefaults(v)
+	if err := mergeEmbeddedDefault(v); err != nil {
+		return nil, err
+	}
 	if err := bindKnownEnv(v); err != nil {
 		return nil, err
 	}
 	var loadedFiles []string
-	if loadedFile, err := mergeConfigFile(v, defaultFile(opts), false); err != nil {
-		return nil, err
-	} else if loadedFile != "" {
-		loadedFiles = append(loadedFiles, loadedFile)
+	if opts.DefaultFile != "" {
+		if loadedFile, err := mergeConfigFile(v, opts.DefaultFile, true); err != nil {
+			return nil, err
+		} else if loadedFile != "" {
+			loadedFiles = append(loadedFiles, loadedFile)
+		}
 	}
 	if loadedFile, err := mergeConfigFile(v, userConfigFile(opts), opts.ConfigFile != ""); err != nil {
 		return nil, err
@@ -52,9 +59,17 @@ func Load(opts LoadOptions) (*AppConfig, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal configuration: %w", err)
 	}
+	cfg.DefaultSource = EmbeddedDefaultConfigSource
 	cfg.LoadedFiles = loadedFiles
 	normalizeDeprecatedProfileKeys(&cfg, v)
 	return &cfg, nil
+}
+
+func mergeEmbeddedDefault(v *viper.Viper) error {
+	if err := v.ReadConfig(bytes.NewBufferString(fixtool.DefaultConfigTOML())); err != nil {
+		return fmt.Errorf("merge embedded default configuration: %w", err)
+	}
+	return nil
 }
 
 func normalizeDeprecatedProfileKeys(cfg *AppConfig, v *viper.Viper) {
@@ -68,33 +83,6 @@ func normalizeDeprecatedProfileKeys(cfg *AppConfig, v *viper.Viper) {
 		}
 	}
 	cfg.Profile.CustomTags = nil
-}
-
-func setDefaults(v *viper.Viper) {
-	v.SetDefault("app.name", "fix-tool")
-	v.SetDefault("log.level", "info")
-	v.SetDefault("log.format", "json")
-	v.SetDefault("profile.name", "default")
-	v.SetDefault("profile.begin_string", "FIX.4.4")
-	v.SetDefault("profile.sender_comp_id", "SENDER")
-	v.SetDefault("profile.target_comp_id", "TARGET")
-	v.SetDefault("profile.username", "")
-	v.SetDefault("profile.password", "")
-	v.SetDefault("profile.host", "127.0.0.1")
-	v.SetDefault("profile.port", 9876)
-	v.SetDefault("profile.heartbeat_interval", "30s")
-	v.SetDefault("profile.reset_on_logon", true)
-	v.SetDefault("profile.data_dictionary", "")
-	v.SetDefault("profile.transport_data_dictionary", "")
-	v.SetDefault("profile.app_data_dictionary", "")
-	v.SetDefault("profile.tls.enabled", true)
-	v.SetDefault("profile.tls.insecure_skip_verify", false)
-	v.SetDefault("profile.tls.ca_file", "")
-	v.SetDefault("profile.tls.cert_file", "")
-	v.SetDefault("profile.tls.key_file", "")
-	v.SetDefault("output.format", "table")
-	v.SetDefault("output.raw_delimiter", "|")
-	v.SetDefault("output.redact_sensitive", true)
 }
 
 func bindKnownEnv(v *viper.Viper) error {
@@ -170,13 +158,6 @@ func applyFlagOverrides(v *viper.Viper, opts LoadOptions) {
 	if opts.OutputFormat != "" {
 		v.Set("output.format", opts.OutputFormat)
 	}
-}
-
-func defaultFile(opts LoadOptions) string {
-	if opts.DefaultFile != "" {
-		return opts.DefaultFile
-	}
-	return DefaultConfigFile
 }
 
 func userConfigFile(opts LoadOptions) string {

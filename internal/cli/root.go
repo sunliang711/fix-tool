@@ -137,6 +137,7 @@ func logLoadedConfigFiles(logger zerolog.Logger, cfg *config.AppConfig) {
 	if cfg == nil {
 		return
 	}
+	logger.Info().Str("source", cfg.DefaultSource).Msg("configuration defaults loaded")
 	logger.Info().Strs("config_files", cfg.LoadedFiles).Msg("configuration files loaded")
 	for _, key := range cfg.DeprecatedKeys {
 		if key == "profile.custom_tags" {

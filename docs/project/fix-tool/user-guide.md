@@ -37,7 +37,7 @@ grep 'fix-tool_v0.1.0_linux_amd64.tar.gz' checksums.txt | shasum -a 256 -c -
 配置合并顺序为：
 
 ```text
-内置默认值 < config.toml < private.toml < FIX_TOOL_* 环境变量 < CLI flags
+内嵌 config/default.toml < config.toml < private.toml < FIX_TOOL_* 环境变量 < CLI flags
 ```
 
 常用全局参数：

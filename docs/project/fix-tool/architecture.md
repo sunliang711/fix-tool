@@ -106,7 +106,7 @@ docs/project/fix-tool/
 - `cmd/fix-tool`：应用入口，只负责启动 Fx 应用。
 - `internal/app`：应用组装、生命周期、公共依赖注册。
 - `internal/cli`：Cobra root command、子命令、交互式 shell。
-- `internal/config`：加载默认配置、用户配置、私有配置、环境变量和 flags，输出强类型配置。
+- `internal/config`：加载内嵌默认配置、用户配置、私有配置、环境变量和 flags，输出强类型配置。
 - `internal/dictionary`：加载 FIX 字典、自定义 tag 元信息、字段名和枚举映射。
 - `internal/fixsession`：封装 QuickFIX/Go initiator、session 生命周期、收发消息回调。
 - `internal/message`：构造 P0 MsgType 请求，支持 raw overlay 和自定义 tag。

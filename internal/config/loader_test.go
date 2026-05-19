@@ -82,6 +82,9 @@ target_comp_id = "PRIVATE"
 	if cfg.Output.Format != "json" {
 		t.Fatalf("output format = %q, want %q", cfg.Output.Format, "json")
 	}
+	if cfg.DefaultSource != EmbeddedDefaultConfigSource {
+		t.Fatalf("default source = %q, want %q", cfg.DefaultSource, EmbeddedDefaultConfigSource)
+	}
 	wantLoadedFiles := []string{defaultFile, configFile, privateFile}
 	if len(cfg.LoadedFiles) != len(wantLoadedFiles) {
 		t.Fatalf("loaded files = %#v, want %#v", cfg.LoadedFiles, wantLoadedFiles)
@@ -90,6 +93,26 @@ target_comp_id = "PRIVATE"
 		if cfg.LoadedFiles[i] != want {
 			t.Fatalf("loaded files[%d] = %q, want %q", i, cfg.LoadedFiles[i], want)
 		}
+	}
+}
+
+func TestLoadUsesEmbeddedDefaultConfig(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cfg, err := Load(LoadOptions{})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DefaultSource != EmbeddedDefaultConfigSource {
+		t.Fatalf("default source = %q, want %q", cfg.DefaultSource, EmbeddedDefaultConfigSource)
+	}
+	if len(cfg.LoadedFiles) != 0 {
+		t.Fatalf("loaded files = %#v, want none", cfg.LoadedFiles)
+	}
+	if cfg.App.Name != "fix-tool" {
+		t.Fatalf("app name = %q, want fix-tool", cfg.App.Name)
+	}
+	if cfg.Profile.Host != "127.0.0.1" {
+		t.Fatalf("profile host = %q, want embedded default", cfg.Profile.Host)
 	}
 }
 

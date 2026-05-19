@@ -132,7 +132,7 @@ fix-tool --config config.toml --private private.toml order new \
 
 后续只要新增、删除或调整配置项，必须同步更新：
 
-- `config/default.toml`
+- `config/default.toml`（会内嵌进二进制）
 - `config-example.toml`
 - `docs/project/fix-tool/user-guide.md`
 - `docs/project/fix-tool/conventions.md`
