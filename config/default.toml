@@ -1,0 +1,33 @@
+[app]
+name = "fix-tool"
+
+[log]
+level = "info"
+format = "json"
+
+[profile]
+name = "default"
+begin_string = "FIX.4.4"
+sender_comp_id = "SENDER"
+target_comp_id = "TARGET"
+username = ""
+password = ""
+host = "127.0.0.1"
+port = 9876
+heartbeat_interval = "30s"
+reset_on_logon = true
+data_dictionary = ""
+transport_data_dictionary = ""
+app_data_dictionary = ""
+
+[profile.tls]
+enabled = true
+insecure_skip_verify = false
+ca_file = ""
+cert_file = ""
+key_file = ""
+
+[output]
+format = "table"
+raw_delimiter = "|"
+redact_sensitive = true
