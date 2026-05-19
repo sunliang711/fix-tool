@@ -423,12 +423,13 @@ func nextEvent(ctx context.Context, events <-chan fixsession.Event, command stri
 
 func traceFromEvent(traceID string, profile string, direction trace.Direction, event fixsession.Event, sentAt time.Time, receivedAt time.Time) (trace.MessageTrace, error) {
 	return trace.NewMessageTrace(trace.BuildOptions{
-		TraceID:    traceID,
-		Profile:    profile,
-		Direction:  direction,
-		Raw:        event.Message,
-		SentAt:     sentAt,
-		ReceivedAt: receivedAt,
+		TraceID:       traceID,
+		Profile:       profile,
+		Direction:     direction,
+		Raw:           event.DisplayMessage(),
+		ValidationRaw: event.Raw(),
+		SentAt:        sentAt,
+		ReceivedAt:    receivedAt,
 	})
 }
 
@@ -450,7 +451,7 @@ func eventTime(event fixsession.Event) time.Time {
 }
 
 func eventValue(event fixsession.Event, tag int) string {
-	parsed, err := trace.ParseRaw(event.Message)
+	parsed, err := trace.ParseRaw(event.Raw())
 	if err != nil {
 		return ""
 	}

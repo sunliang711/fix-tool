@@ -112,6 +112,12 @@ func TestApplicationRedactsSensitiveEventMessage(t *testing.T) {
 	if !strings.Contains(event.Message, "554="+redactedValue) {
 		t.Fatalf("event message = %q, want redacted password", event.Message)
 	}
+	if !strings.Contains(event.Raw(), "553=account") {
+		t.Fatalf("event raw message = %q, want original username", event.Raw())
+	}
+	if !strings.Contains(event.Raw(), "554=secret") {
+		t.Fatalf("event raw message = %q, want original password", event.Raw())
+	}
 }
 
 func messageWithType(value string) *quickfix.Message {

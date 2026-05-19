@@ -90,8 +90,8 @@ func (r *Renderer) Table(message trace.MessageTrace) (string, error) {
 	if message.Latency > 0 {
 		fmt.Fprintf(writer, "Latency\t%s\n", message.Latency)
 	}
-	fmt.Fprintf(writer, "BodyLength\tvalid=%t\texpected=%s\tactual=%s\n", message.BodyLengthValid, message.BodyLength.Expected, message.BodyLength.Actual)
-	fmt.Fprintf(writer, "CheckSum\tvalid=%t\texpected=%s\tactual=%s\n", message.CheckSumValid, message.CheckSum.Expected, message.CheckSum.Actual)
+	writeValidation(writer, "BodyLength", message.BodyLength, message.BodyLengthValid, message.ValidationRedacted)
+	writeValidation(writer, "CheckSum", message.CheckSum, message.CheckSumValid, message.ValidationRedacted)
 	fmt.Fprintf(writer, "Raw\t%s\n\n", r.rawFromFields(fields))
 	fmt.Fprintf(writer, "Tag\tName\tType\tValue\tEnum\tSensitive\n")
 	for _, field := range fields {
@@ -110,23 +110,24 @@ func (r *Renderer) JSON(message trace.MessageTrace) (string, error) {
 		return "", err
 	}
 	view := traceView{
-		TraceID:         message.TraceID,
-		Profile:         message.Profile,
-		Direction:       string(message.Direction),
-		MsgType:         message.MsgType,
-		MsgSeqNum:       message.MsgSeqNum,
-		ClOrdID:         message.ClOrdID,
-		OrderID:         message.OrderID,
-		ExecType:        message.ExecType,
-		OrdStatus:       message.OrdStatus,
-		Raw:             r.rawFromFields(fields),
-		SentAt:          formatTime(message.SentAt),
-		ReceivedAt:      formatTime(message.ReceivedAt),
-		LatencyMS:       message.Latency.Milliseconds(),
-		BodyLength:      message.BodyLength,
-		CheckSum:        message.CheckSum,
-		BodyLengthValid: message.BodyLengthValid,
-		CheckSumValid:   message.CheckSumValid,
+		TraceID:            message.TraceID,
+		Profile:            message.Profile,
+		Direction:          string(message.Direction),
+		MsgType:            message.MsgType,
+		MsgSeqNum:          message.MsgSeqNum,
+		ClOrdID:            message.ClOrdID,
+		OrderID:            message.OrderID,
+		ExecType:           message.ExecType,
+		OrdStatus:          message.OrdStatus,
+		Raw:                r.rawFromFields(fields),
+		SentAt:             formatTime(message.SentAt),
+		ReceivedAt:         formatTime(message.ReceivedAt),
+		LatencyMS:          message.Latency.Milliseconds(),
+		BodyLength:         message.BodyLength,
+		CheckSum:           message.CheckSum,
+		BodyLengthValid:    message.BodyLengthValid,
+		CheckSumValid:      message.CheckSumValid,
+		ValidationRedacted: message.ValidationRedacted,
 	}
 	for _, field := range fields {
 		view.Fields = append(view.Fields, r.fieldView(field))
@@ -136,6 +137,18 @@ func (r *Renderer) JSON(message trace.MessageTrace) (string, error) {
 		return "", fmt.Errorf("render json: %w", err)
 	}
 	return string(data), nil
+}
+
+func writeValidation(writer *tabwriter.Writer, label string, result trace.ValidationResult, valid bool, redacted bool) {
+	if redacted {
+		original := result.Expected
+		if original == "" {
+			original = result.Actual
+		}
+		fmt.Fprintf(writer, "%s\tskipped\tredacted=true\toriginal=%s\n", label, original)
+		return
+	}
+	fmt.Fprintf(writer, "%s\tvalid=%t\texpected=%s\tactual=%s\n", label, valid, result.Expected, result.Actual)
 }
 
 func (r *Renderer) rawFromFields(fields []trace.Field) string {

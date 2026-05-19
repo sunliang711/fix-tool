@@ -50,6 +50,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 		TraverseChildren: true,
 		SilenceUsage:     true,
 		SilenceErrors:    true,
+		Args:             cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -70,7 +71,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 
 	root.AddCommand(newVersionCommand(out))
 	root.AddCommand(newConfigCommand(flags, logger))
-	root.AddCommand(newAdminCommands(flags, logger)...)
+	root.AddCommand(newCheckCommand(flags, logger))
 	root.AddCommand(newOrderCommand(flags, logger))
 	root.AddCommand(newRawCommand(flags, logger))
 	root.AddCommand(newInspectCommand(flags, logger))

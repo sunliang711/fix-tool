@@ -23,7 +23,7 @@
 | 01 项目骨架、配置模型、日志、Fx 组装 | 已完成 | 已完成 Go module、Cobra、Viper、Zerolog、Fx、配置校验和基础测试 |
 | 02 QuickFIX/Go session adapter 与 profile 加载 | 已完成 | 已完成 QuickFIX/Go initiator 封装、profile settings 映射、事件捕获、Fx 生命周期和测试 |
 | 03 报文捕获、解析、字段名映射、脱敏渲染 | 已完成 | 已完成 trace、raw 解析、字段字典、BodyLength/CheckSum 校验、脱敏、table/json/raw 渲染和测试 |
-| 04 admin 命令 | 已完成 | 已完成 logon、logout、heartbeat、test-request 命令、admin service、发送/等待/超时逻辑和测试 |
+| 04 check 命令 | 已完成 | 已完成 check logon/logout/heartbeat/test-request 一次性检查命令、admin service、发送/等待/超时逻辑和测试 |
 | 05 order 命令 | 已完成 | 已完成 order new/cancel/replace 命令、订单消息构造、响应匹配、自定义字段、trace 输出和测试 |
 | 06 交互式 shell | 已完成 | 已完成 shell 命令、有限命令解析、共享 session、trace list、错误不中断、退出关闭和测试 |
 | 07 raw send、inspect raw、自定义字段定义 overlay | 已完成 | 已完成 raw builder、raw send、inspect raw、自定义字段定义 overlay、scenario raw 接入和测试 |

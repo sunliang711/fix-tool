@@ -13,8 +13,8 @@
 name = "fix-tool"
 
 [log]
-# 日志级别。可选值：trace、debug、info、warn、error。
-# 生产或联调默认建议使用 info；排障字段用 debug，原始报文用 trace。
+# 日志级别。可选值：debug、info、warn、error。
+# 生产或联调默认建议使用 info；排障时用 debug 查看字段解释和 raw 报文。
 level = "info"
 
 # 日志格式。可选值：json、console。

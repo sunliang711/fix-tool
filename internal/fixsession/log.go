@@ -93,21 +93,13 @@ func (l zerologLog) logMessage(direction string, message []byte) {
 	msgCode := firstParsedValue(parsed.Fields, int(tagMsgType))
 	msgName := l.messageName(msgCode)
 	event := l.logger.Info().
-		Str("source", "quickfix").
-		Str("direction", direction)
+		Str("source", "quickfix")
 	if l.session != "" {
 		event = event.Str("session", l.session)
 	}
-	if msgCode != "" {
-		event = event.Str("msg_code", msgCode)
-	}
-	if msgName != "" {
-		event = event.Str("msg_type", msgName)
-	}
 	event = l.appendSummaryFields(event, parsed.Fields)
 	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
-	l.logPrettyMessage(direction, raw, msgName, msgCode)
-	l.logRawMessage(direction, raw)
+	l.logDebugMessage(direction, raw, msgName, msgCode)
 }
 
 func (l zerologLog) isWarningEvent(message string) bool {
@@ -204,41 +196,27 @@ func firstParsedValue(fields []trace.Field, tag int) string {
 func (l zerologLog) logUnparsedMessage(direction string, raw string, err error) {
 	event := l.logger.Info().
 		Str("source", "quickfix").
-		Str("direction", direction).
 		Err(err)
 	if l.session != "" {
 		event = event.Str("session", l.session)
 	}
 	event.Msg(l.messageLogTitle(direction, "", ""))
-	l.logRawMessage(direction, raw)
+	l.logDebugMessage(direction, raw, "", "")
 }
 
-func (l zerologLog) logPrettyMessage(direction string, raw string, msgName string, msgCode string) {
+func (l zerologLog) logDebugMessage(direction string, raw string, msgName string, msgCode string) {
 	if l.logger.GetLevel() > zerolog.DebugLevel {
 		return
 	}
 	event := l.logger.Debug().
 		Str("source", "quickfix").
 		Str("direction", direction).
-		Str("pretty_message", l.prettyFIXMessage(raw))
-	if l.session != "" {
-		event = event.Str("session", l.session)
-	}
-	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
-}
-
-func (l zerologLog) logRawMessage(direction string, raw string) {
-	if l.logger.GetLevel() > zerolog.TraceLevel {
-		return
-	}
-	event := l.logger.Trace().
-		Str("source", "quickfix").
-		Str("direction", direction).
+		Str("pretty_message", l.prettyFIXMessage(raw)).
 		Str("raw_message", trace.DisplayRaw(raw, "|"))
 	if l.session != "" {
 		event = event.Str("session", l.session)
 	}
-	event.Msg("fix raw " + l.directionArrow(direction))
+	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
 }
 
 func (l zerologLog) messageLogTitle(direction string, msgName string, msgCode string) string {

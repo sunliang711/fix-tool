@@ -16,11 +16,15 @@ func TestAppConfigValid(t *testing.T) {
 	}
 }
 
-func TestAppConfigAllowsTraceLogLevel(t *testing.T) {
+func TestAppConfigRejectsTraceLogLevel(t *testing.T) {
 	cfg := validConfig()
 	cfg.Log.Level = "trace"
-	if err := validate.AppConfig(cfg); err != nil {
-		t.Fatalf("AppConfig() error = %v", err)
+	err := validate.AppConfig(cfg)
+	if err == nil {
+		t.Fatal("AppConfig() error = nil, want trace log level validation error")
+	}
+	if !strings.Contains(err.Error(), "Level") || !strings.Contains(err.Error(), "oneof") {
+		t.Fatalf("AppConfig() error = %v, want log level error", err)
 	}
 }
 

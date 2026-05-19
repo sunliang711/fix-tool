@@ -102,11 +102,13 @@ func (a *quickFIXApplication) FromApp(message *quickfix.Message, sessionID quick
 }
 
 func (a *quickFIXApplication) emitMessage(eventType EventType, message *quickfix.Message, sessionID quickfix.SessionID) {
+	raw := message.String()
 	a.emit(Event{
-		Type:      eventType,
-		SessionID: sessionID,
-		MsgType:   msgType(message),
-		Message:   redactFIXMessage(message.String(), a.sensitiveTags),
+		Type:       eventType,
+		SessionID:  sessionID,
+		MsgType:    msgType(message),
+		Message:    redactFIXMessage(raw, a.sensitiveTags),
+		RawMessage: raw,
 	})
 }
 

@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"fix-tool/internal/admin"
 	"fix-tool/internal/config"
-	"fix-tool/internal/dictionary"
 	"fix-tool/internal/fixsession"
 	"fix-tool/internal/logging"
-	"fix-tool/internal/render"
-	"fix-tool/internal/trace"
 	"fix-tool/internal/validate"
 
 	"github.com/rs/zerolog"
@@ -25,31 +23,37 @@ type adminRunner struct {
 	logger zerolog.Logger
 }
 
-func newAdminCommands(flags *flagState, logger zerolog.Logger) []*cobra.Command {
+const adminCommandStopTimeout = 5 * time.Second
+
+func newCheckCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 	runner := adminRunner{flags: flags, logger: logger}
+	checkCmd := &cobra.Command{
+		Use:   "check",
+		Short: "Run one-shot FIX session checks",
+	}
 	logonCmd := &cobra.Command{
 		Use:   "logon",
-		Short: "Start FIX session and wait for Logon",
+		Short: "Check FIX Logon handshake and auto logout",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), func(ctx context.Context, service *admin.Service) (admin.Result, error) {
+			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), "Logon", func(ctx context.Context, service *admin.Service) (admin.Result, error) {
 				return service.Logon(ctx)
 			})
 		},
 	}
 	logoutCmd := &cobra.Command{
 		Use:   "logout",
-		Short: "Send FIX Logout",
+		Short: "Check FIX Logout handshake after Logon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), func(ctx context.Context, service *admin.Service) (admin.Result, error) {
+			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), "Logout", func(ctx context.Context, service *admin.Service) (admin.Result, error) {
 				return service.Logout(ctx)
 			})
 		},
 	}
 	heartbeatCmd := &cobra.Command{
 		Use:   "heartbeat",
-		Short: "Send FIX Heartbeat",
+		Short: "Check FIX Heartbeat after Logon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), func(ctx context.Context, service *admin.Service) (admin.Result, error) {
+			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), "Heartbeat", func(ctx context.Context, service *admin.Service) (admin.Result, error) {
 				return service.Heartbeat(ctx)
 			})
 		},
@@ -58,13 +62,13 @@ func newAdminCommands(flags *flagState, logger zerolog.Logger) []*cobra.Command 
 	var testRequestID string
 	testRequestCmd := &cobra.Command{
 		Use:   "test-request",
-		Short: "Send FIX TestRequest",
+		Short: "Check FIX TestRequest after Logon",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			testRequestID = strings.TrimSpace(testRequestID)
 			if testRequestID == "" {
 				return admin.ErrTestRequestIDRequired
 			}
-			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), func(ctx context.Context, service *admin.Service) (admin.Result, error) {
+			return runner.run(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), "TestRequest", func(ctx context.Context, service *admin.Service) (admin.Result, error) {
 				return service.TestRequest(ctx, testRequestID)
 			})
 		},
@@ -74,15 +78,17 @@ func newAdminCommands(flags *flagState, logger zerolog.Logger) []*cobra.Command 
 		logger.Warn().Err(err).Msg("failed to mark test request id flag required")
 	}
 
-	return []*cobra.Command{logonCmd, logoutCmd, heartbeatCmd, testRequestCmd}
+	checkCmd.AddCommand(logonCmd, logoutCmd, heartbeatCmd, testRequestCmd)
+	return checkCmd
 }
 
 func (r adminRunner) run(
 	ctx context.Context,
-	out io.Writer,
+	_ io.Writer,
 	errOut io.Writer,
+	title string,
 	operation func(context.Context, *admin.Service) (admin.Result, error),
-) error {
+) (err error) {
 	cfg, err := config.Load(config.LoadOptions{
 		DefaultFile:  r.flags.defaultConfig,
 		ConfigFile:   r.flags.configFile,
@@ -110,8 +116,19 @@ func (r adminRunner) run(
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
 		return err
 	}
-	service := admin.NewService(manager, admin.Options{})
-	result, err := operation(ctx, service)
+	configuredLogger.Info().
+		Str("command", "check "+strings.ToLower(title)).
+		Str("lifecycle", "start session -> logon -> command -> stop session").
+		Msg("running one-shot check command")
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), adminCommandStopTimeout)
+		defer cancel()
+		if stopErr := manager.Stop(stopCtx); stopErr != nil && err == nil {
+			err = fmt.Errorf("stop fix session: %w", stopErr)
+		}
+	}()
+	service := admin.NewService(manager, admin.Options{KeepSession: true})
+	_, err = operation(ctx, service)
 	if err != nil {
 		logEvent := configuredLogger.Error().Err(err)
 		if diagnostics, ok := admin.LogonDiagnosticsFromError(err); ok {
@@ -122,7 +139,7 @@ func (r adminRunner) run(
 		logEvent.Msg("admin command failed")
 		return err
 	}
-	return renderAdminResult(out, cfg, result)
+	return nil
 }
 
 func appendAdminTargetFields(event *zerolog.Event, cfg *config.AppConfig) *zerolog.Event {
@@ -162,34 +179,4 @@ func appendLogonDiagnosticFields(event *zerolog.Event, cfg *config.AppConfig, di
 		event = event.Str("last_admin_business_reject_code", diagnostics.LastAdminBusinessRejectCode)
 	}
 	return event
-}
-
-func renderAdminResult(out io.Writer, cfg *config.AppConfig, result admin.Result) error {
-	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomFieldDefs), render.Options{
-		Format:        render.Format(cfg.Output.Format),
-		RawDelimiter:  cfg.Output.RawDelimiter,
-		ShowSensitive: !cfg.Output.RedactSensitive,
-	})
-	if result.Request != nil {
-		if err := renderAdminTrace(out, renderer, render.Format(cfg.Output.Format), "Request", *result.Request); err != nil {
-			return err
-		}
-	}
-	if result.Response != nil {
-		if err := renderAdminTrace(out, renderer, render.Format(cfg.Output.Format), "Response", *result.Response); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func renderAdminTrace(out io.Writer, renderer *render.Renderer, format render.Format, title string, message trace.MessageTrace) error {
-	rendered, err := renderer.Render(message, format)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(out, "%s\n%s\n", title, rendered); err != nil {
-		return err
-	}
-	return nil
 }

@@ -135,10 +135,10 @@ chmod 600 private.toml
 fix-tool --config config.toml --private private.toml config validate
 ```
 
-登录并发送新单：
+检查登录并发送一笔一次性新单：
 
 ```bash
-fix-tool --config config.toml --private private.toml logon
+fix-tool --config config.toml --private private.toml check logon
 
 fix-tool --config config.toml --private private.toml order new \
   --cl-ord-id DEMO-0001 \
@@ -175,13 +175,13 @@ fix-tool --config config.toml --private private.toml order replace \
 
 ## 5. 常用命令
 
-管理类：
+一次性检查类：
 
 ```bash
-fix-tool --config config.toml --private private.toml logon
-fix-tool --config config.toml --private private.toml heartbeat
-fix-tool --config config.toml --private private.toml test-request --id ping-001
-fix-tool --config config.toml --private private.toml logout
+fix-tool --config config.toml --private private.toml check logon
+fix-tool --config config.toml --private private.toml check heartbeat
+fix-tool --config config.toml --private private.toml check test-request --id ping-001
+fix-tool --config config.toml --private private.toml check logout
 ```
 
 raw 报文：

@@ -20,11 +20,26 @@ const (
 )
 
 type Event struct {
-	Type      EventType
-	SessionID quickfix.SessionID
-	MsgType   string
-	Message   string
-	Time      time.Time
+	Type       EventType
+	SessionID  quickfix.SessionID
+	MsgType    string
+	Message    string
+	RawMessage string
+	Time       time.Time
+}
+
+func (e Event) Raw() string {
+	if e.RawMessage != "" {
+		return e.RawMessage
+	}
+	return e.Message
+}
+
+func (e Event) DisplayMessage() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return e.Raw()
 }
 
 type Manager interface {

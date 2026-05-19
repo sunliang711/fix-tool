@@ -47,6 +47,35 @@ func TestRendererTableIncludesFieldNamesAndEnums(t *testing.T) {
 	}
 }
 
+func TestRendererTableSkipsValidationWhenRawIsRedacted(t *testing.T) {
+	raw := readRenderMessage(t, "new_order_single.fix")
+	message, err := trace.NewMessageTrace(trace.BuildOptions{
+		TraceID:       "trace-test",
+		Profile:       "uat",
+		Direction:     trace.DirectionOutbound,
+		Raw:           strings.Replace(raw, "11=C001", "11=[REDACTED]", 1),
+		ValidationRaw: raw,
+	})
+	if err != nil {
+		t.Fatalf("NewMessageTrace() error = %v", err)
+	}
+	renderer := newTestRenderer(false)
+
+	output, err := renderer.Render(message, FormatTable)
+	if err != nil {
+		t.Fatalf("Render(table) error = %v", err)
+	}
+	if !strings.Contains(output, "BodyLength  skipped  redacted=true") {
+		t.Fatalf("table output missing skipped BodyLength:\n%s", output)
+	}
+	if !strings.Contains(output, "CheckSum    skipped  redacted=true") {
+		t.Fatalf("table output missing skipped CheckSum:\n%s", output)
+	}
+	if strings.Contains(output, "valid=false") {
+		t.Fatalf("table output contains misleading validation:\n%s", output)
+	}
+}
+
 func TestRendererJSONIncludesRedactedFields(t *testing.T) {
 	message := newTrace(t)
 	renderer := newTestRenderer(false)

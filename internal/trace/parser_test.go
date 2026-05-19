@@ -85,6 +85,33 @@ func TestParseRawRequiresCheckSumLast(t *testing.T) {
 	}
 }
 
+func TestNewMessageTraceValidatesOriginalRawWhenDisplayRawIsRedacted(t *testing.T) {
+	raw := readMessage(t, "new_order_single.fix")
+	displayRaw := strings.Replace(raw, "11=C001", "11=[REDACTED]", 1)
+
+	message, err := NewMessageTrace(BuildOptions{
+		TraceID:       "trace-test",
+		Direction:     DirectionOutbound,
+		Raw:           displayRaw,
+		ValidationRaw: raw,
+	})
+	if err != nil {
+		t.Fatalf("NewMessageTrace() error = %v", err)
+	}
+	if !message.BodyLengthValid {
+		t.Fatalf("BodyLengthValid = false, result = %+v", message.BodyLength)
+	}
+	if !message.CheckSumValid {
+		t.Fatalf("CheckSumValid = false, result = %+v", message.CheckSum)
+	}
+	if !message.ValidationRedacted {
+		t.Fatal("ValidationRedacted = false, want true")
+	}
+	if got := firstValue(message.Fields, tagClOrdID); got != "[REDACTED]" {
+		t.Fatalf("ClOrdID = %q, want redacted display value", got)
+	}
+}
+
 func TestParseRawRejectsInvalidField(t *testing.T) {
 	_, err := ParseRaw("8=FIX.4.4|bad-field|10=000|")
 	if err == nil {

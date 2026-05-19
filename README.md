@@ -114,7 +114,7 @@ value = "replace-with-session-token"
 ```bash
 chmod 600 private.toml
 fix-tool --config config.toml --private private.toml config validate
-fix-tool --config config.toml --private private.toml logon
+fix-tool --config config.toml --private private.toml check logon
 fix-tool --config config.toml --private private.toml order new \
   --cl-ord-id DEMO-0001 \
   --symbol AAPL \

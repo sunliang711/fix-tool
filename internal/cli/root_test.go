@@ -27,10 +27,45 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out.String(), "FIX protocol testing CLI") {
 		t.Fatalf("help output = %q, want root help", out.String())
 	}
-	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order", "raw", "inspect", "shell", "run"} {
+	for _, want := range []string{"check", "order", "raw", "inspect", "shell", "run"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want command %q", out.String(), want)
 		}
+	}
+}
+
+func TestCheckHelp(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"check", "--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"Run one-shot FIX session checks", "logon", "logout", "heartbeat", "test-request"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("help output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
+func TestTopLevelAdminCommandsAreNotRegistered(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"logon"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	err := command.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("ExecuteContext() error = nil, want unknown command error")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("ExecuteContext() error = %v, want unknown command error", err)
 	}
 }
 
@@ -267,7 +302,7 @@ func TestOrderSubcommandHelpShowsFlags(t *testing.T) {
 func TestTestRequestHelpShowsIDFlag(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	command := NewRootCommand(Args{"test-request", "--help"}, IO{
+	command := NewRootCommand(Args{"check", "test-request", "--help"}, IO{
 		Out:    &out,
 		ErrOut: &errOut,
 	}, zerolog.Nop())
@@ -283,7 +318,7 @@ func TestTestRequestHelpShowsIDFlag(t *testing.T) {
 func TestTestRequestRequiresID(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	command := NewRootCommand(Args{"test-request"}, IO{
+	command := NewRootCommand(Args{"check", "test-request"}, IO{
 		Out:    &out,
 		ErrOut: &errOut,
 	}, zerolog.Nop())

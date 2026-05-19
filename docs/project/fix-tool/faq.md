@@ -39,10 +39,10 @@ fix-tool --config config.toml --private private.toml config validate
 
 ```bash
 fix-tool --config config.toml --private private.toml config validate
-fix-tool --config config.toml --private private.toml --log-level debug logon
+fix-tool --config config.toml --private private.toml --log-level debug check logon
 ```
 
-需要查看 raw FIX 报文时，把 `--log-level` 临时改为 `trace`。
+需要查看 raw FIX 报文时，把 `--log-level` 临时改为 `debug`。
 
 重点检查：
 

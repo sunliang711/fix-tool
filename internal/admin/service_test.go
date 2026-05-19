@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,39 @@ func TestServiceLogonWaitsForEvent(t *testing.T) {
 	}
 	if len(manager.session.sent) != 0 {
 		t.Fatalf("sent messages = %d, want 0", len(manager.session.sent))
+	}
+}
+
+func TestTraceFromEventUsesOriginalRawMessage(t *testing.T) {
+	raw := rawAdminWithFields(msgTypeLogon, map[quickfix.Tag]string{
+		quickfix.Tag(553): "account",
+		quickfix.Tag(554): "secret",
+	})
+	event := fixsession.Event{
+		Type:       fixsession.EventToAdmin,
+		MsgType:    msgTypeLogon,
+		Message:    strings.ReplaceAll(strings.ReplaceAll(raw, "account", "[REDACTED]"), "secret", "[REDACTED]"),
+		RawMessage: raw,
+	}
+
+	messageTrace, err := traceFromEvent("trace-test", "test", trace.DirectionOutbound, event, time.Now().UTC(), time.Time{})
+	if err != nil {
+		t.Fatalf("traceFromEvent() error = %v", err)
+	}
+	if !messageTrace.BodyLengthValid {
+		t.Fatalf("BodyLengthValid = false, result = %+v", messageTrace.BodyLength)
+	}
+	if !messageTrace.CheckSumValid {
+		t.Fatalf("CheckSumValid = false, result = %+v", messageTrace.CheckSum)
+	}
+	if !messageTrace.ValidationRedacted {
+		t.Fatal("ValidationRedacted = false, want true")
+	}
+	if strings.Contains(messageTrace.Raw, "553=account") {
+		t.Fatalf("trace raw = %q, want redacted username", messageTrace.Raw)
+	}
+	if !strings.Contains(messageTrace.Raw, "553=[REDACTED]") {
+		t.Fatalf("trace raw = %q, want redacted username", messageTrace.Raw)
 	}
 }
 

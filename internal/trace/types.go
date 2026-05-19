@@ -44,33 +44,35 @@ type ParsedMessage struct {
 }
 
 type MessageTrace struct {
-	TraceID         string           `json:"trace_id"`
-	Profile         string           `json:"profile,omitempty"`
-	Direction       Direction        `json:"direction"`
-	MsgType         string           `json:"msg_type,omitempty"`
-	MsgSeqNum       string           `json:"msg_seq_num,omitempty"`
-	ClOrdID         string           `json:"cl_ord_id,omitempty"`
-	OrderID         string           `json:"order_id,omitempty"`
-	ExecType        string           `json:"exec_type,omitempty"`
-	OrdStatus       string           `json:"ord_status,omitempty"`
-	Raw             string           `json:"raw"`
-	Fields          []Field          `json:"fields"`
-	SentAt          time.Time        `json:"sent_at,omitempty"`
-	ReceivedAt      time.Time        `json:"received_at,omitempty"`
-	Latency         time.Duration    `json:"latency,omitempty"`
-	BodyLength      ValidationResult `json:"body_length"`
-	CheckSum        ValidationResult `json:"checksum"`
-	BodyLengthValid bool             `json:"body_length_valid"`
-	CheckSumValid   bool             `json:"checksum_valid"`
+	TraceID            string           `json:"trace_id"`
+	Profile            string           `json:"profile,omitempty"`
+	Direction          Direction        `json:"direction"`
+	MsgType            string           `json:"msg_type,omitempty"`
+	MsgSeqNum          string           `json:"msg_seq_num,omitempty"`
+	ClOrdID            string           `json:"cl_ord_id,omitempty"`
+	OrderID            string           `json:"order_id,omitempty"`
+	ExecType           string           `json:"exec_type,omitempty"`
+	OrdStatus          string           `json:"ord_status,omitempty"`
+	Raw                string           `json:"raw"`
+	Fields             []Field          `json:"fields"`
+	SentAt             time.Time        `json:"sent_at,omitempty"`
+	ReceivedAt         time.Time        `json:"received_at,omitempty"`
+	Latency            time.Duration    `json:"latency,omitempty"`
+	BodyLength         ValidationResult `json:"body_length"`
+	CheckSum           ValidationResult `json:"checksum"`
+	BodyLengthValid    bool             `json:"body_length_valid"`
+	CheckSumValid      bool             `json:"checksum_valid"`
+	ValidationRedacted bool             `json:"validation_redacted,omitempty"`
 }
 
 type BuildOptions struct {
-	TraceID    string
-	Profile    string
-	Direction  Direction
-	Raw        string
-	SentAt     time.Time
-	ReceivedAt time.Time
+	TraceID       string
+	Profile       string
+	Direction     Direction
+	Raw           string
+	ValidationRaw string
+	SentAt        time.Time
+	ReceivedAt    time.Time
 }
 
 func NewMessageTrace(opts BuildOptions) (MessageTrace, error) {
@@ -78,29 +80,39 @@ func NewMessageTrace(opts BuildOptions) (MessageTrace, error) {
 	if err != nil {
 		return MessageTrace{}, err
 	}
+	validation := parsed
+	validationRedacted := false
+	if opts.ValidationRaw != "" && opts.ValidationRaw != opts.Raw {
+		validation, err = ParseRaw(opts.ValidationRaw)
+		if err != nil {
+			return MessageTrace{}, err
+		}
+		validationRedacted = true
+	}
 	latency := time.Duration(0)
 	if !opts.SentAt.IsZero() && !opts.ReceivedAt.IsZero() {
 		latency = opts.ReceivedAt.Sub(opts.SentAt)
 	}
 	return MessageTrace{
-		TraceID:         opts.TraceID,
-		Profile:         opts.Profile,
-		Direction:       opts.Direction,
-		MsgType:         firstValue(parsed.Fields, tagMsgType),
-		MsgSeqNum:       firstValue(parsed.Fields, tagMsgSeqNum),
-		ClOrdID:         firstValue(parsed.Fields, tagClOrdID),
-		OrderID:         firstValue(parsed.Fields, tagOrderID),
-		ExecType:        firstValue(parsed.Fields, tagExecType),
-		OrdStatus:       firstValue(parsed.Fields, tagOrdStatus),
-		Raw:             parsed.Raw,
-		Fields:          parsed.Fields,
-		SentAt:          opts.SentAt,
-		ReceivedAt:      opts.ReceivedAt,
-		Latency:         latency,
-		BodyLength:      parsed.BodyLength,
-		CheckSum:        parsed.CheckSum,
-		BodyLengthValid: parsed.BodyLengthValid,
-		CheckSumValid:   parsed.CheckSumValid,
+		TraceID:            opts.TraceID,
+		Profile:            opts.Profile,
+		Direction:          opts.Direction,
+		MsgType:            firstValue(parsed.Fields, tagMsgType),
+		MsgSeqNum:          firstValue(parsed.Fields, tagMsgSeqNum),
+		ClOrdID:            firstValue(parsed.Fields, tagClOrdID),
+		OrderID:            firstValue(parsed.Fields, tagOrderID),
+		ExecType:           firstValue(parsed.Fields, tagExecType),
+		OrdStatus:          firstValue(parsed.Fields, tagOrdStatus),
+		Raw:                parsed.Raw,
+		Fields:             parsed.Fields,
+		SentAt:             opts.SentAt,
+		ReceivedAt:         opts.ReceivedAt,
+		Latency:            latency,
+		BodyLength:         validation.BodyLength,
+		CheckSum:           validation.CheckSum,
+		BodyLengthValid:    validation.BodyLengthValid,
+		CheckSumValid:      validation.CheckSumValid,
+		ValidationRedacted: validationRedacted,
 	}, nil
 }
 

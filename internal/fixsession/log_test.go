@@ -132,15 +132,13 @@ func TestZerologLogFactoryRedactsQuickFIXMessages(t *testing.T) {
 	if !strings.Contains(got, "pretty_message") {
 		t.Fatalf("log output = %q, want pretty message", got)
 	}
-	if strings.Contains(got, "raw_message") {
-		t.Fatalf("log output = %q, want no raw message at debug level", got)
+	if !strings.Contains(got, "raw_message") {
+		t.Fatalf("log output = %q, want raw message at debug level", got)
 	}
 	for _, want := range []string{
 		"-> Logon(A)",
-		`"direction":"out"`,
-		`"msg_code":"A"`,
-		`"msg_type":"Logon"`,
 		"35(MsgType:Logon)=A|",
+		"35=A|",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log output = %q, want %q", got, want)
@@ -165,25 +163,22 @@ func TestZerologLogFactoryLogsServerToClientMessages(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"<- Logout(5)",
-		`"direction":"in"`,
-		`"msg_code":"5"`,
-		`"msg_type":"Logout"`,
 		`"reason":"missing username"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log output = %q, want %q", got, want)
 		}
 	}
-	for _, unwanted := range []string{"raw_message", "pretty_message"} {
+	for _, unwanted := range []string{"raw_message", "pretty_message", `"direction":"in"`, `"msg_code":"5"`, `"msg_type":"Logout"`} {
 		if strings.Contains(got, unwanted) {
 			t.Fatalf("log output = %q, want no %q at info level", got, unwanted)
 		}
 	}
 }
 
-func TestZerologLogFactoryLogsRawMessagesAtTraceLevel(t *testing.T) {
+func TestZerologLogFactoryLogsRawMessagesAtDebugLevel(t *testing.T) {
 	var out bytes.Buffer
-	logger := zerolog.New(&out).Level(zerolog.TraceLevel)
+	logger := zerolog.New(&out).Level(zerolog.DebugLevel)
 	logFactory := newZerologLogFactory(logger, validProfile())
 	log, err := logFactory.Create()
 	if err != nil {
@@ -198,7 +193,6 @@ func TestZerologLogFactoryLogsRawMessagesAtTraceLevel(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"<- Logout(5)",
-		"fix raw <-",
 		"raw_message",
 		"pretty_message",
 		"35=5|",
