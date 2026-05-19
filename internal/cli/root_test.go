@@ -23,10 +23,72 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out.String(), "FIX protocol testing CLI") {
 		t.Fatalf("help output = %q, want root help", out.String())
 	}
-	for _, want := range []string{"logon", "logout", "heartbeat", "test-request"} {
+	for _, want := range []string{"logon", "logout", "heartbeat", "test-request", "order"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want command %q", out.String(), want)
 		}
+	}
+}
+
+func TestOrderHelpShowsSubcommands(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"order", "--help"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"new", "cancel", "replace"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("help output = %q, want order subcommand %q", out.String(), want)
+		}
+	}
+}
+
+func TestOrderSubcommandHelpShowsFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		args Args
+		want []string
+	}{
+		{
+			name: "new",
+			args: Args{"order", "new", "--help"},
+			want: []string{"--symbol", "--side", "--qty", "--price", "--cl-ord-id", "--ord-type", "--time-in-force", "--tag"},
+		},
+		{
+			name: "cancel",
+			args: Args{"order", "cancel", "--help"},
+			want: []string{"--orig-cl-ord-id", "--symbol", "--side", "--cl-ord-id", "--order-id", "--tag"},
+		},
+		{
+			name: "replace",
+			args: Args{"order", "replace", "--help"},
+			want: []string{"--orig-cl-ord-id", "--qty", "--price", "--cl-ord-id", "--order-id", "--symbol", "--side", "--ord-type", "--time-in-force", "--tag"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			command := NewRootCommand(tt.args, IO{
+				Out:    &out,
+				ErrOut: &errOut,
+			}, zerolog.Nop())
+
+			if err := command.ExecuteContext(context.Background()); err != nil {
+				t.Fatalf("ExecuteContext() error = %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("help output = %q, want flag %q", out.String(), want)
+				}
+			}
+		})
 	}
 }
 
