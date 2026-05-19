@@ -21,15 +21,9 @@ func TestConsoleWriterRendersFIXMessagesAsBlocks(t *testing.T) {
 
 	logger.Debug().
 		Str("direction", "out").
+		Str("raw_message", "8=FIX.4.4|9=60|35=0|").
 		Str("pretty_message", "8(BeginString)=FIX.4.4|9(BodyLength)=60|35(MsgType:Heartbeat)=0|").
 		Str("source", "quickfix").
-		Str("view", "pretty").
-		Msg("-> Heartbeat(0)")
-	logger.Debug().
-		Str("direction", "out").
-		Str("raw_message", "8=FIX.4.4|9=60|35=0|").
-		Str("source", "quickfix").
-		Str("view", "raw").
 		Msg("-> Heartbeat(0)")
 
 	got := stripANSICodes(out.String())
@@ -39,14 +33,18 @@ func TestConsoleWriterRendersFIXMessagesAsBlocks(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"view=pretty",
-		"\n  pretty_message:\n    BeginString        8 = FIX.4.4\n    BodyLength         9 = 60\n    MsgType:Heartbeat 35 = 0",
-		"view=raw",
 		"\n  raw_message:\n    8=FIX.4.4|9=60|35=0|",
+		"\n  pretty_message:\n    BeginString        8 = FIX.4.4\n    BodyLength         9 = 60\n    MsgType:Heartbeat 35 = 0",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log output = %q, want %q", got, want)
 		}
+	}
+	if strings.Contains(got, "view=pretty") || strings.Contains(got, "view=raw") {
+		t.Fatalf("log output = %q, want no split view fields", got)
+	}
+	if strings.Index(got, "raw_message:") > strings.Index(got, "pretty_message:") {
+		t.Fatalf("log output = %q, want raw block before pretty block", got)
 	}
 }
 

@@ -61,8 +61,8 @@ func newConsoleWriter(output io.Writer, noColor bool) zerolog.ConsoleWriter {
 }
 
 func writeConsoleMessageBlocks(event map[string]interface{}, buffer *bytes.Buffer) error {
-	writeConsoleMessageBlock(buffer, "pretty_message", event["pretty_message"], true)
 	writeConsoleMessageBlock(buffer, "raw_message", event["raw_message"], false)
+	writeConsoleMessageBlock(buffer, "pretty_message", event["pretty_message"], true)
 	return nil
 }
 

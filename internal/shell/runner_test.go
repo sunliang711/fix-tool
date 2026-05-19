@@ -95,6 +95,42 @@ func TestRunnerTraceListRendersRecordedTraces(t *testing.T) {
 	}
 }
 
+func TestRunnerOrderCommandRecordsTraceWithoutImmediateRequestResponse(t *testing.T) {
+	var out bytes.Buffer
+	orderService := &stubOrderService{
+		newResult: order.Result{
+			Request:  testTrace(t, "order-request", trace.DirectionOutbound, message.MsgTypeNewOrderSingle),
+			Response: testTrace(t, "order-response", trace.DirectionInbound, message.MsgTypeExecutionReport),
+		},
+	}
+	runner := NewRunner(Options{
+		In:      strings.NewReader("order new --symbol AAPL --side buy --qty 100\ntrace list\nexit\n"),
+		Out:     &out,
+		ErrOut:  &bytes.Buffer{},
+		Admin:   &stubAdminService{},
+		Order:   orderService,
+		Manager: &runnerFakeManager{},
+		Renderer: render.NewRenderer(nil, render.Options{
+			Format: render.FormatRaw,
+		}),
+		Format: render.FormatRaw,
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	for _, want := range []string{"Trace 1", "Trace 2", "35=D|", "35=8|"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("out = %q, want %q", out.String(), want)
+		}
+	}
+	for _, unwanted := range []string{"Request\n", "Response\n"} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("out = %q, want no immediate order trace title %q", out.String(), unwanted)
+		}
+	}
+}
+
 func TestRunnerExitStopsSession(t *testing.T) {
 	input := newLineThenBlockReadCloser("exit\n")
 	manager := &runnerFakeManager{}
@@ -329,8 +365,8 @@ func TestRunnerReusesManagerSessionAndLoggedOnState(t *testing.T) {
 	if manager.session.sent[0] != message.MsgTypeNewOrderSingle {
 		t.Fatalf("sent message = %q, want NewOrderSingle", manager.session.sent[0])
 	}
-	if !strings.Contains(out.String(), "35=D|") {
-		t.Fatalf("out = %q, want order trace", out.String())
+	if strings.Contains(out.String(), "Request\n") || strings.Contains(out.String(), "Response\n") {
+		t.Fatalf("out = %q, want no immediate order trace render", out.String())
 	}
 }
 
@@ -358,18 +394,22 @@ func (s *stubAdminService) TestRequest(context.Context, string) (admin.Result, e
 	return admin.Result{}, nil
 }
 
-type stubOrderService struct{}
+type stubOrderService struct {
+	newResult     order.Result
+	cancelResult  order.Result
+	replaceResult order.Result
+}
 
 func (s *stubOrderService) NewOrder(context.Context, order.NewRequest) (order.Result, error) {
-	return order.Result{}, nil
+	return s.newResult, nil
 }
 
 func (s *stubOrderService) CancelOrder(context.Context, order.CancelRequest) (order.Result, error) {
-	return order.Result{}, nil
+	return s.cancelResult, nil
 }
 
 func (s *stubOrderService) ReplaceOrder(context.Context, order.ReplaceRequest) (order.Result, error) {
-	return order.Result{}, nil
+	return s.replaceResult, nil
 }
 
 type fakeLineReader struct {

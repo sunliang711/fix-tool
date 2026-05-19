@@ -208,15 +208,10 @@ func (l zerologLog) logDebugMessage(direction string, raw string, msgName string
 	if l.logger.GetLevel() > zerolog.DebugLevel {
 		return
 	}
-	prettyEvent := l.messageDebugEvent(direction).
-		Str("view", "pretty").
+	event := l.messageDebugEvent(direction).
+		Str("raw_message", trace.DisplayRaw(raw, "|")).
 		Str("pretty_message", l.prettyFIXMessage(raw))
-	prettyEvent.Msg(l.messageLogTitle(direction, msgName, msgCode))
-
-	rawEvent := l.messageDebugEvent(direction).
-		Str("view", "raw").
-		Str("raw_message", trace.DisplayRaw(raw, "|"))
-	rawEvent.Msg(l.messageLogTitle(direction, msgName, msgCode))
+	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
 }
 
 func (l zerologLog) messageDebugEvent(direction string) *zerolog.Event {

@@ -478,6 +478,14 @@ func (m *tuiModel) consumeHeartbeatLine(line string) bool {
 	}
 	trimmed := strings.TrimSpace(line)
 	if m.hbBlock != "" {
+		switch trimmed {
+		case "raw_message:":
+			m.hbBlock = "raw"
+			return true
+		case "pretty_message:":
+			m.hbBlock = "pretty"
+			return true
+		}
 		if m.hbBlock == "raw" && trimmed != "" && trimmed != "raw_message:" {
 			m.setHeartbeatRaw(m.hbDir, trimmed)
 		}
@@ -501,6 +509,8 @@ func (m *tuiModel) consumeHeartbeatLine(line string) bool {
 		m.hbDir = direction
 		return true
 	}
+	m.hbBlock = "message"
+	m.hbDir = direction
 	return true
 }
 

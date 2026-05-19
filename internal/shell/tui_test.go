@@ -206,12 +206,11 @@ func TestTUIModelRoutesHeartbeatRawToPanel(t *testing.T) {
 
 	message := strings.Join([]string{
 		"2026-05-19T21:30:01+08:00 INF -> Heartbeat(0) direction=out source=quickfix",
-		"2026-05-19T21:30:01+08:00 DBG -> Heartbeat(0) direction=out source=quickfix view=pretty",
-		"  pretty_message:",
-		"    8(BeginString)=FIX.4.4",
-		"2026-05-19T21:30:01+08:00 DBG -> Heartbeat(0) direction=out source=quickfix view=raw",
+		"2026-05-19T21:30:01+08:00 DBG -> Heartbeat(0) direction=out source=quickfix",
 		"  raw_message:",
 		"    8=FIX.4.4|9=59|35=0|34=6|49=CLIENT01|10=034|",
+		"  pretty_message:",
+		"    BeginString  8 = FIX.4.4",
 		"2026-05-19T21:30:02+08:00 INF business log",
 		"",
 	}, "\n")
@@ -248,8 +247,7 @@ func TestTUIModelRoutesJSONHeartbeatRawToPanel(t *testing.T) {
 	model.height = 12
 
 	message := strings.Join([]string{
-		`{"level":"debug","direction":"in","msg_type":"Heartbeat","message":"<- Heartbeat(0)","pretty_message":"8(BeginString)=FIX.4.4|35(MsgType:Heartbeat)=0|"}`,
-		`{"level":"debug","direction":"in","msg_type":"Heartbeat","message":"<- Heartbeat(0)","raw_message":"8=FIX.4.4|9=59|35=0|34=7|49=BROKER01|10=035|"}`,
+		`{"level":"debug","direction":"in","msg_type":"Heartbeat","message":"<- Heartbeat(0)","raw_message":"8=FIX.4.4|9=59|35=0|34=7|49=BROKER01|10=035|","pretty_message":"8(BeginString)=FIX.4.4|35(MsgType:Heartbeat)=0|"}`,
 		`{"level":"info","message":"business log"}`,
 		"",
 	}, "\n")

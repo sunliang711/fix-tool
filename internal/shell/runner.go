@@ -373,19 +373,19 @@ func (r *Runner) execute(ctx context.Context, command Command) error {
 		if err != nil {
 			return err
 		}
-		return r.renderOrderResult(result)
+		return r.recordOrderResult(result)
 	case CommandOrderCancel:
 		result, err := r.order.CancelOrder(ctx, command.CancelRequest)
 		if err != nil {
 			return err
 		}
-		return r.renderOrderResult(result)
+		return r.recordOrderResult(result)
 	case CommandOrderReplace:
 		result, err := r.order.ReplaceOrder(ctx, command.ReplaceRequest)
 		if err != nil {
 			return err
 		}
-		return r.renderOrderResult(result)
+		return r.recordOrderResult(result)
 	case CommandTraceList:
 		return r.renderTraceList()
 	case CommandSaveStart:
@@ -452,19 +452,10 @@ func (r *Runner) recordAdminResult(result admin.Result) error {
 	return nil
 }
 
-func (r *Runner) renderOrderResult(result order.Result) error {
-	if err := r.recordAndRender("Request", result.Request); err != nil {
-		return err
-	}
-	return r.recordAndRender("Response", result.Response)
-}
-
-func (r *Runner) recordAndRender(title string, message *trace.MessageTrace) error {
-	if message == nil {
-		return nil
-	}
-	recorded := r.record(message)
-	return r.renderTrace(title, recorded)
+func (r *Runner) recordOrderResult(result order.Result) error {
+	r.record(result.Request)
+	r.record(result.Response)
+	return nil
 }
 
 func (r *Runner) record(message *trace.MessageTrace) trace.MessageTrace {

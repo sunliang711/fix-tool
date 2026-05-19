@@ -135,19 +135,14 @@ func TestZerologLogFactoryRedactsQuickFIXMessages(t *testing.T) {
 	if !strings.Contains(got, "raw_message") {
 		t.Fatalf("log output = %q, want raw message at debug level", got)
 	}
-	prettyLine := logLineContaining(got, `"view":"pretty"`)
-	rawLine := logLineContaining(got, `"view":"raw"`)
-	if prettyLine == "" {
-		t.Fatalf("log output = %q, want pretty debug line", got)
+	debugLine := logLineContaining(got, `"raw_message"`, `"pretty_message"`)
+	if debugLine == "" {
+		t.Fatalf("log output = %q, want merged raw and pretty debug line", got)
 	}
-	if rawLine == "" {
-		t.Fatalf("log output = %q, want raw debug line", got)
-	}
-	if strings.Contains(prettyLine, "raw_message") {
-		t.Fatalf("pretty log line = %q, want no raw message", prettyLine)
-	}
-	if strings.Contains(rawLine, "pretty_message") {
-		t.Fatalf("raw log line = %q, want no pretty message", rawLine)
+	for _, unwanted := range []string{`"view":"pretty"`, `"view":"raw"`} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("log output = %q, want no split view field %q", got, unwanted)
+		}
 	}
 	for _, want := range []string{
 		"-> Logon(A)",
@@ -209,8 +204,6 @@ func TestZerologLogFactoryLogsRawMessagesAtDebugLevel(t *testing.T) {
 		"<- Logout(5)",
 		"raw_message",
 		"pretty_message",
-		`"view":"pretty"`,
-		`"view":"raw"`,
 		"35=5|",
 		"35(MsgType:Logout)=5|",
 	} {
@@ -218,16 +211,14 @@ func TestZerologLogFactoryLogsRawMessagesAtDebugLevel(t *testing.T) {
 			t.Fatalf("log output = %q, want %q", got, want)
 		}
 	}
-	prettyLine := logLineContaining(got, `"view":"pretty"`)
-	rawLine := logLineContaining(got, `"view":"raw"`)
-	if prettyLine == "" || rawLine == "" {
-		t.Fatalf("log output = %q, want separate pretty and raw debug lines", got)
+	debugLine := logLineContaining(got, `"raw_message"`, `"pretty_message"`)
+	if debugLine == "" {
+		t.Fatalf("log output = %q, want merged raw and pretty debug line", got)
 	}
-	if strings.Contains(prettyLine, "raw_message") {
-		t.Fatalf("pretty log line = %q, want no raw message", prettyLine)
-	}
-	if strings.Contains(rawLine, "pretty_message") {
-		t.Fatalf("raw log line = %q, want no pretty message", rawLine)
+	for _, unwanted := range []string{`"view":"pretty"`, `"view":"raw"`} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("log output = %q, want no split view field %q", got, unwanted)
+		}
 	}
 }
 
