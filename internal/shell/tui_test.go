@@ -55,16 +55,16 @@ func TestTUIModelKeepsTwoBlankLinesBeforeHelp(t *testing.T) {
 
 	lines := strings.Split(stripTUIANSICodes(model.View()), "\n")
 	for index, line := range lines {
-		if line != "fix-tool> █" {
+		if !strings.Contains(line, "fix-tool> █") {
 			continue
 		}
-		if index+3 >= len(lines) {
+		if index+4 >= len(lines) {
 			t.Fatalf("view lines = %q, want help after input gap", lines)
 		}
-		if lines[index+1] != "" || lines[index+2] != "" {
+		if lines[index+2] != "" || lines[index+3] != "" {
 			t.Fatalf("view lines = %q, want two blank lines before help", lines)
 		}
-		if !strings.HasPrefix(lines[index+3], "Enter run") {
+		if !strings.Contains(lines[index+4], "Enter run") {
 			t.Fatalf("view lines = %q, want help after two blank lines", lines)
 		}
 		return
@@ -72,7 +72,7 @@ func TestTUIModelKeepsTwoBlankLinesBeforeHelp(t *testing.T) {
 	t.Fatalf("view lines = %q, want input line", lines)
 }
 
-func TestTUIModelRendersSectionTitlesWithoutSideBorders(t *testing.T) {
+func TestTUIModelRendersSectionTitlesWithBorders(t *testing.T) {
 	reader := NewTUILineReader()
 	output := NewTUIOutputWriter()
 	done := newTUIRunnerState()
@@ -81,14 +81,14 @@ func TestTUIModelRendersSectionTitlesWithoutSideBorders(t *testing.T) {
 	model.height = 12
 
 	view := stripTUIANSICodes(model.View())
-	for _, want := range []string{"── Logs ", "── Heartbeat ", "── Command "} {
+	for _, want := range []string{"┌ Logs ", "┌ Heartbeat ", "┌ Command* "} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view = %q, want section title %q", view, want)
 		}
 	}
-	for _, unwanted := range []string{"│", "┌", "┐", "└", "┘"} {
-		if strings.Contains(view, unwanted) {
-			t.Fatalf("view = %q, want no side border %q", view, unwanted)
+	for _, want := range []string{"│", "┌", "┐", "└", "┘"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view = %q, want border %q", view, want)
 		}
 	}
 }
@@ -102,8 +102,8 @@ func TestTUIModelKeepsBlankLinesBetweenSections(t *testing.T) {
 	model.height = 14
 
 	lines := strings.Split(stripTUIANSICodes(model.View()), "\n")
-	assertBlankLineBeforeTitle(t, lines, "── Heartbeat ")
-	assertBlankLineBeforeTitle(t, lines, "── Command ")
+	assertBlankLineBeforeTitle(t, lines, "┌ Heartbeat ")
+	assertBlankLineBeforeTitle(t, lines, "┌ Command")
 }
 
 func TestTUIModelAcceptsSpacesInInput(t *testing.T) {
@@ -176,7 +176,7 @@ func TestTUIModelAppendsAndScrollsOutput(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 14
+	model.height = 17
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\n"))
 	model = next.(tuiModel)
@@ -276,7 +276,7 @@ func TestTUIModelRoutesFormattedHeartbeatBlockToPanel(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 180
-	model.height = 20
+	model.height = 30
 
 	message := strings.Join([]string{
 		"===> Outgoing FIX Msg: ===>",
@@ -319,7 +319,7 @@ func TestTUIModelKeepsFormattedNonHeartbeatBlockInLogs(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 180
-	model.height = 20
+	model.height = 30
 
 	message := strings.Join([]string{
 		"<=== Incoming FIX Msg: <===",
@@ -356,7 +356,7 @@ func TestTUIModelStartsWithMouseWheelDisabled(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 15
+	model.height = 18
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\nfive\n"))
 	model = next.(tuiModel)
@@ -378,7 +378,7 @@ func TestTUIModelMouseWheelScrollsOutput(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 15
+	model.height = 18
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\nfive\n"))
 	model = next.(tuiModel)
@@ -414,6 +414,127 @@ func TestTUIModelMouseWheelScrollsOutput(t *testing.T) {
 	if !strings.Contains(view, "F2 wheel:off") {
 		t.Fatalf("view = %q, want disabled mouse wheel state in help", view)
 	}
+}
+
+func TestTUIModelCopiesVisualSelectionFromLogs(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	clipboard := &fakeTUIClipboard{}
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.clipboard = clipboard
+	model.width = 80
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg("alpha\nbeta\ngamma\n"))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	model = next.(tuiModel)
+	view := model.View()
+	if !strings.Contains(view, tuiSelectionColor+"alpha") {
+		t.Fatalf("view = %q, want selected log line", view)
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = next.(tuiModel)
+
+	if clipboard.text != "alpha\nbeta" {
+		t.Fatalf("clipboard = %q, want selected log lines", clipboard.text)
+	}
+	if strings.Contains(clipboard.text, "│") || strings.Contains(clipboard.text, "┌") {
+		t.Fatalf("clipboard = %q, want content without border", clipboard.text)
+	}
+	if model.mode != tuiModeNormal {
+		t.Fatalf("mode = %v, want normal after yank", model.mode)
+	}
+	if !strings.Contains(stripTUIANSICodes(model.View()), "copied:2") {
+		t.Fatalf("view = %q, want copy status", stripTUIANSICodes(model.View()))
+	}
+}
+
+func TestTUIModelCopiesHeartbeatPaneLine(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	clipboard := &fakeTUIClipboard{}
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.clipboard = clipboard
+	model.width = 100
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg(strings.Join([]string{
+		"===> Outgoing FIX Msg: ===>",
+		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
+		"Session:     FIX.4.4:CLIENT01->BROKER01",
+		"Content:",
+		"  Raw:",
+		"    8=FIX.4.4|9=59|35=0|34=9|49=CLIENT01|10=034|",
+		"  Pretty:",
+		"    MsgType:Heartbeat 35 = 0",
+		"",
+	}, "\n")))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = next.(tuiModel)
+
+	want := "OUT raw_message=8=FIX.4.4|9=59|35=0|34=9|49=CLIENT01|10=034|"
+	if clipboard.text != want {
+		t.Fatalf("clipboard = %q, want %q", clipboard.text, want)
+	}
+	if strings.Contains(clipboard.text, "│") || strings.Contains(clipboard.text, "┌") {
+		t.Fatalf("clipboard = %q, want content without border", clipboard.text)
+	}
+}
+
+func TestTUIModelSelectedHeartbeatLineUsesFullLineSelectionColor(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 100
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg(strings.Join([]string{
+		"===> Outgoing FIX Msg: ===>",
+		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
+		"Session:     FIX.4.4:CLIENT01->BROKER01",
+		"Content:",
+		"  Raw:",
+		"    8=FIX.4.4|9=59|35=0|34=9|49=CLIENT01|10=034|",
+		"  Pretty:",
+		"    MsgType:Heartbeat 35 = 0",
+		"",
+	}, "\n")))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+
+	view := model.View()
+	selected := tuiSelectionColor + "OUT raw_message=8=FIX.4.4|9=59|35=0|34=9|49=CLIENT01|10=034|"
+	if !strings.Contains(view, selected) {
+		t.Fatalf("view = %q, want heartbeat line selected from start", view)
+	}
+	if strings.Contains(view, tuiHeartbeatColor+"34=9"+tuiColorReset) {
+		t.Fatalf("view = %q, want no nested heartbeat color inside selected line", view)
+	}
+}
+
+type fakeTUIClipboard struct {
+	text string
+}
+
+func (c *fakeTUIClipboard) WriteText(text string) error {
+	c.text = text
+	return nil
 }
 
 func stripTUIANSICodes(value string) string {

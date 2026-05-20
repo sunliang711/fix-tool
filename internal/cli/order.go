@@ -2,16 +2,12 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"fix-tool/internal/config"
-	"fix-tool/internal/dictionary"
 	"fix-tool/internal/fixsession"
 	"fix-tool/internal/logging"
 	"fix-tool/internal/order"
-	"fix-tool/internal/render"
-	"fix-tool/internal/trace"
 	"fix-tool/internal/validate"
 
 	"github.com/rs/zerolog"
@@ -127,39 +123,9 @@ func (r orderRunner) run(
 		return err
 	}
 	service := order.NewService(manager, order.Options{})
-	result, err := operation(ctx, service)
+	_, err = operation(ctx, service)
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("order command failed")
-		return err
-	}
-	return renderOrderResult(out, cfg, result)
-}
-
-func renderOrderResult(out io.Writer, cfg *config.AppConfig, result order.Result) error {
-	renderer := render.NewRenderer(dictionary.NewFromConfig(cfg.Profile.CustomFieldDefs), render.Options{
-		Format:        render.Format(cfg.Output.Format),
-		RawDelimiter:  cfg.Output.RawDelimiter,
-		ShowSensitive: !cfg.Output.RedactSensitive,
-	})
-	if result.Request != nil {
-		if err := renderOrderTrace(out, renderer, render.Format(cfg.Output.Format), "Request", *result.Request); err != nil {
-			return err
-		}
-	}
-	if result.Response != nil {
-		if err := renderOrderTrace(out, renderer, render.Format(cfg.Output.Format), "Response", *result.Response); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func renderOrderTrace(out io.Writer, renderer *render.Renderer, format render.Format, title string, message trace.MessageTrace) error {
-	rendered, err := renderer.Render(message, format)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(out, "%s\n%s\n", title, rendered); err != nil {
 		return err
 	}
 	return nil

@@ -123,6 +123,68 @@ func TestCheckLogonWritesFIXMessagesToStdout(t *testing.T) {
 	}
 }
 
+func TestOrderNewWritesOnlyFIXMessagesToStdout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	server, err := mockfix.NewAcceptor(mockfix.Options{
+		ProfileName:     "mock-cli-order",
+		InitiatorCompID: "CLI-ORDER-SENDER",
+		AcceptorCompID:  "CLI-ORDER-TARGET",
+	})
+	if err != nil {
+		t.Fatalf("NewAcceptor() error = %v", err)
+	}
+	if err := server.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer stopCancel()
+		if err := server.Stop(stopCtx); err != nil {
+			t.Fatalf("Stop() error = %v", err)
+		}
+	})
+
+	configFile := writeMockConfig(t, server)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{
+		"--config", configFile,
+		"order", "new",
+		"--symbol", "AAPL",
+		"--side", "buy",
+		"--qty", "100",
+		"--price", "10.25",
+		"--ord-type", "limit",
+	}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(ctx); err != nil {
+		t.Fatalf("ExecuteContext() error = %v, stderr = %s", err, errOut.String())
+	}
+	output := out.String()
+	for _, want := range []string{
+		"===> Outgoing FIX Msg: ===>",
+		"<=== Incoming FIX Msg: <===",
+		"MsgType:NewOrderSingle",
+		"MsgType:ExecutionReport",
+		"35 = D",
+		"35 = 8",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("stdout = %s, want %q", output, want)
+		}
+	}
+	for _, unwanted := range []string{"Request\n", "Response\n", "TraceID", "MsgType\t", "BodyLength\t"} {
+		if strings.Contains(output, unwanted) {
+			t.Fatalf("stdout = %s, want shell-style FIX messages without rendered trace detail %q", output, unwanted)
+		}
+	}
+}
+
 func writeMockConfig(t *testing.T, server *mockfix.Acceptor) string {
 	t.Helper()
 	profile := server.ProfileConfig()

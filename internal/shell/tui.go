@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ const (
 	tuiMouseScrollRows  = 3
 	tuiPromptColor      = "\x1b[1;36m"
 	tuiHeartbeatColor   = "\x1b[1;33m"
+	tuiSelectionColor   = "\x1b[7m"
 	tuiColorReset       = "\x1b[0m"
 )
 
@@ -111,6 +113,20 @@ type TUIOptions struct {
 	Runner     *Runner
 	LineReader *TUILineReader
 	Output     *TUIOutputWriter
+	Clipboard  TUIClipboard
+}
+
+type TUIClipboard interface {
+	WriteText(string) error
+}
+
+type systemTUIClipboard struct {
+}
+
+func (systemTUIClipboard) WriteText(text string) error {
+	command := exec.Command("pbcopy")
+	command.Stdin = strings.NewReader(text)
+	return command.Run()
 }
 
 func RunTUI(ctx context.Context, options TUIOptions) error {
@@ -131,6 +147,9 @@ func RunTUI(ctx context.Context, options TUIOptions) error {
 	}()
 
 	model := newTUIModel(options.Prompt, options.LineReader, options.Output, runnerState)
+	if options.Clipboard != nil {
+		model.clipboard = options.Clipboard
+	}
 	program := tea.NewProgram(model, tea.WithInput(options.In), tea.WithOutput(options.Out), tea.WithAltScreen())
 	_, programErr := program.Run()
 	options.Output.Close()
@@ -164,6 +183,21 @@ type tuiHeartbeatState struct {
 	inbound  string
 	unknown  string
 }
+
+type tuiPane int
+
+const (
+	tuiPaneLogs tuiPane = iota
+	tuiPaneHeartbeat
+	tuiPaneCommand
+)
+
+type tuiMode int
+
+const (
+	tuiModeNormal tuiMode = iota
+	tuiModeVisual
+)
 
 type tuiRunnerState struct {
 	done chan struct{}
@@ -203,6 +237,13 @@ type tuiModel struct {
 	historyPos int
 	scroll     int
 	mouse      bool
+	focus      tuiPane
+	mode       tuiMode
+	logsCursor int
+	hbCursor   int
+	visualFrom int
+	clipboard  TUIClipboard
+	copyStatus string
 	heartbeat  tuiHeartbeatState
 	hbBlock    string
 	hbDir      string
@@ -220,6 +261,8 @@ func newTUIModel(prompt string, reader *TUILineReader, output *TUIOutputWriter, 
 		done:       done,
 		width:      defaultTUIWidth,
 		height:     defaultTUIHeight,
+		focus:      tuiPaneCommand,
+		clipboard:  systemTUIClipboard{},
 		historyPos: -1,
 	}
 }
@@ -255,11 +298,12 @@ func (m tuiModel) View() string {
 		width = defaultTUIWidth
 	}
 	height := m.height
-	if height <= tuiLogsTitleHeight+2*tuiSectionGapHeight+tuiInputHeight+m.heartbeatHeight() {
+	if height < tuiMinimumHeight() {
 		height = defaultTUIHeight
 	}
-	logHeight := height - tuiLogsTitleHeight - 2*tuiSectionGapHeight - tuiInputHeight - m.heartbeatHeight()
-	rows := m.visibleLogRows(width)
+	contentWidth := paneContentWidth(width)
+	logHeight := m.logHeight()
+	rows := m.visibleLogRows(contentWidth)
 	scroll := clampValue(m.scroll, 0, maxScroll(len(rows), logHeight))
 	bottom := len(rows) - scroll
 	if bottom < 0 {
@@ -273,17 +317,29 @@ func (m tuiModel) View() string {
 		start = 0
 	}
 	visible := append([]string(nil), rows[start:bottom]...)
-	for len(visible) < logHeight {
-		visible = append([]string{""}, visible...)
+	logsContent := make([]string, 0, len(visible))
+	for len(logsContent)+len(visible) < logHeight {
+		logsContent = append(logsContent, strings.Repeat(" ", contentWidth))
 	}
-	input := m.renderInput(width)
-	help := fitRunes("Enter run  Up/Down history  PgUp/PgDown logs  F2 "+m.mouseLabel()+"  Ctrl+L clear  Ctrl+C/Ctrl+D exit", width)
-	lines := []string{titleDivider("Logs", width)}
-	lines = append(lines, visible...)
+	for i, line := range visible {
+		absolute := start + i
+		logsContent = append(logsContent, m.renderSelectableLine(tuiPaneLogs, absolute, line, contentWidth))
+	}
+	heartbeatRows := m.heartbeatRows()
+	heartbeatContent := make([]string, 0, len(heartbeatRows))
+	for i, line := range heartbeatRows {
+		if !m.isSelectedLine(tuiPaneHeartbeat, i) {
+			line = colorTUIHeartbeatSeqNum(line)
+		}
+		heartbeatContent = append(heartbeatContent, m.renderSelectableLine(tuiPaneHeartbeat, i, line, contentWidth))
+	}
+	input := m.renderInput(contentWidth)
+	help := fitRunes("Tab focus  v visual  j/k move  y copy  Enter run  PgUp/PgDown logs  F2 "+m.mouseLabel()+"  Ctrl+C/Ctrl+D exit"+m.copyStatusSuffix(), width)
+	lines := renderPane("Logs", m.focus == tuiPaneLogs, logsContent, width)
 	lines = append(lines, "")
-	lines = append(lines, m.renderHeartbeat(width)...)
+	lines = append(lines, renderPane("Heartbeat", m.focus == tuiPaneHeartbeat, heartbeatContent, width)...)
 	lines = append(lines, "")
-	lines = append(lines, titleDivider("Command", width), input)
+	lines = append(lines, renderPane("Command", m.focus == tuiPaneCommand, []string{input}, width)...)
 	for range tuiHelpGapHeight {
 		lines = append(lines, "")
 	}
@@ -293,8 +349,25 @@ func (m tuiModel) View() string {
 
 func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch message.Type {
-	case tea.KeyCtrlC, tea.KeyEsc:
+	case tea.KeyCtrlC:
 		return m, tea.Quit
+	case tea.KeyEsc:
+		if m.mode == tuiModeVisual {
+			m.mode = tuiModeNormal
+			return m, nil
+		}
+		return m, tea.Quit
+	case tea.KeyTab:
+		m.focusNext(1)
+		return m, nil
+	case tea.KeyShiftTab:
+		m.focusNext(-1)
+		return m, nil
+	}
+	if m.focus != tuiPaneCommand {
+		return m.handleReadOnlyKey(message)
+	}
+	switch message.Type {
 	case tea.KeyCtrlD:
 		_ = m.reader.Close()
 	case tea.KeyCtrlL:
@@ -343,6 +416,179 @@ func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.insertRunes(message.Runes)
 	}
 	return m, nil
+}
+
+func (m tuiModel) handleReadOnlyKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch message.Type {
+	case tea.KeyCtrlL:
+		m.logs = nil
+		m.pending = ""
+		m.scroll = 0
+		m.logsCursor = 0
+	case tea.KeyUp:
+		m.moveFocusedCursor(-1)
+	case tea.KeyDown:
+		m.moveFocusedCursor(1)
+	case tea.KeyPgUp:
+		m.moveFocusedCursor(-m.logHeight())
+	case tea.KeyPgDown:
+		m.moveFocusedCursor(m.logHeight())
+	case tea.KeyRunes:
+		if len(message.Runes) != 1 {
+			return m, nil
+		}
+		switch message.Runes[0] {
+		case 'j':
+			m.moveFocusedCursor(1)
+		case 'k':
+			m.moveFocusedCursor(-1)
+		case 'v':
+			if m.mode == tuiModeVisual {
+				m.mode = tuiModeNormal
+			} else {
+				m.mode = tuiModeVisual
+				m.visualFrom = m.focusedCursor()
+			}
+		case 'y':
+			m.copySelection()
+		}
+	}
+	return m, nil
+}
+
+func (m *tuiModel) focusNext(delta int) {
+	order := []tuiPane{tuiPaneLogs, tuiPaneHeartbeat, tuiPaneCommand}
+	index := 0
+	for i, pane := range order {
+		if pane == m.focus {
+			index = i
+			break
+		}
+	}
+	index = (index + delta + len(order)) % len(order)
+	m.focus = order[index]
+	m.mode = tuiModeNormal
+	m.copyStatus = ""
+	m.clampFocusedCursor()
+}
+
+func (m *tuiModel) moveFocusedCursor(delta int) {
+	if delta == 0 {
+		return
+	}
+	switch m.focus {
+	case tuiPaneLogs:
+		rows := m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
+		if len(rows) == 0 {
+			m.logsCursor = 0
+			return
+		}
+		m.logsCursor = clampValue(m.logsCursor+delta, 0, len(rows)-1)
+		m.ensureLogsCursorVisible(len(rows))
+	case tuiPaneHeartbeat:
+		rows := m.heartbeatRows()
+		if len(rows) == 0 {
+			m.hbCursor = 0
+			return
+		}
+		m.hbCursor = clampValue(m.hbCursor+delta, 0, len(rows)-1)
+	}
+}
+
+func (m *tuiModel) clampFocusedCursor() {
+	switch m.focus {
+	case tuiPaneLogs:
+		rows := m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
+		if len(rows) == 0 {
+			m.logsCursor = 0
+			return
+		}
+		m.logsCursor = clampValue(m.logsCursor, 0, len(rows)-1)
+		m.ensureLogsCursorVisible(len(rows))
+	case tuiPaneHeartbeat:
+		rows := m.heartbeatRows()
+		if len(rows) == 0 {
+			m.hbCursor = 0
+			return
+		}
+		m.hbCursor = clampValue(m.hbCursor, 0, len(rows)-1)
+	}
+}
+
+func (m tuiModel) focusedCursor() int {
+	switch m.focus {
+	case tuiPaneLogs:
+		return m.logsCursor
+	case tuiPaneHeartbeat:
+		return m.hbCursor
+	default:
+		return 0
+	}
+}
+
+func (m *tuiModel) ensureLogsCursorVisible(rowCount int) {
+	height := m.logHeight()
+	if rowCount == 0 || height <= 0 {
+		m.scroll = 0
+		return
+	}
+	start, bottom := logVisibleRange(rowCount, height, m.scroll)
+	if m.logsCursor < start {
+		bottom = m.logsCursor + height
+		if bottom > rowCount {
+			bottom = rowCount
+		}
+		m.scroll = rowCount - bottom
+	} else if m.logsCursor >= bottom {
+		bottom = m.logsCursor + 1
+		m.scroll = rowCount - bottom
+	}
+	m.clampScroll()
+}
+
+func (m *tuiModel) copySelection() {
+	rows := m.copyRowsForFocusedPane()
+	if len(rows) == 0 {
+		m.copyStatus = "  copy:none"
+		m.mode = tuiModeNormal
+		return
+	}
+	if m.clipboard == nil {
+		m.copyStatus = "  copy:unavailable"
+		m.mode = tuiModeNormal
+		return
+	}
+	text := strings.Join(rows, "\n")
+	if err := m.clipboard.WriteText(text); err != nil {
+		m.copyStatus = "  copy:error"
+		m.mode = tuiModeNormal
+		return
+	}
+	m.copyStatus = fmt.Sprintf("  copied:%d", len(rows))
+	m.mode = tuiModeNormal
+}
+
+func (m tuiModel) copyRowsForFocusedPane() []string {
+	var rows []string
+	cursor := m.focusedCursor()
+	switch m.focus {
+	case tuiPaneLogs:
+		rows = m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
+	case tuiPaneHeartbeat:
+		rows = m.heartbeatRows()
+	default:
+		return nil
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	start, end := cursor, cursor
+	if m.mode == tuiModeVisual {
+		start, end = orderedRange(m.visualFrom, cursor)
+	}
+	start = clampValue(start, 0, len(rows)-1)
+	end = clampValue(end, 0, len(rows)-1)
+	return append([]string(nil), rows[start:end+1]...)
 }
 
 func (m tuiModel) handleMouse(message tea.MouseMsg) tuiModel {
@@ -612,22 +858,105 @@ func (m tuiModel) renderInput(width int) string {
 
 func (m tuiModel) logHeight() int {
 	height := m.height
-	if height <= tuiLogsTitleHeight+2*tuiSectionGapHeight+tuiInputHeight+m.heartbeatHeight() {
+	if height < tuiMinimumHeight() {
 		height = defaultTUIHeight
 	}
-	return height - tuiLogsTitleHeight - 2*tuiSectionGapHeight - tuiInputHeight - m.heartbeatHeight()
+	return maxValue(1, height-2-2*tuiSectionGapHeight-m.heartbeatHeight()-3-tuiHelpGapHeight-1)
 }
 
 func (m tuiModel) heartbeatHeight() int {
-	return tuiHeartbeatHeight
+	return tuiHeartbeatHeight + 1
 }
 
-func (m tuiModel) renderHeartbeat(width int) []string {
+func (m tuiModel) heartbeatRows() []string {
 	return []string{
-		titleDivider("Heartbeat", width),
-		colorTUIHeartbeatSeqNum(fitRunes("OUT raw_message="+heartbeatValue(m.heartbeat.outbound), width)),
-		colorTUIHeartbeatSeqNum(fitRunes("IN  raw_message="+heartbeatValue(m.heartbeat.inbound, m.heartbeat.unknown), width)),
+		"OUT raw_message=" + heartbeatValue(m.heartbeat.outbound),
+		"IN  raw_message=" + heartbeatValue(m.heartbeat.inbound, m.heartbeat.unknown),
 	}
+}
+
+func (m tuiModel) renderSelectableLine(pane tuiPane, index int, line string, width int) string {
+	line = fitRunes(line, width)
+	line += strings.Repeat(" ", width-runeLenWithoutANSI(line))
+	if m.focus != pane {
+		return line
+	}
+	if m.isSelectedLine(pane, index) {
+		return tuiSelectionColor + line + tuiColorReset
+	}
+	return line
+}
+
+func (m tuiModel) isSelectedLine(pane tuiPane, index int) bool {
+	if m.focus != pane {
+		return false
+	}
+	if m.mode == tuiModeVisual {
+		start, end := orderedRange(m.visualFrom, m.focusedCursor())
+		return index >= start && index <= end
+	}
+	return index == m.focusedCursor()
+}
+
+func renderPane(title string, focused bool, content []string, width int) []string {
+	if width < 4 {
+		width = defaultTUIWidth
+	}
+	contentWidth := paneContentWidth(width)
+	label := " " + title + " "
+	if focused {
+		label = " " + title + "* "
+	}
+	top := "┌" + label + strings.Repeat("─", maxValue(0, width-2-len([]rune(label)))) + "┐"
+	bottom := "└" + strings.Repeat("─", width-2) + "┘"
+	lines := []string{top}
+	for _, line := range content {
+		if runeLenWithoutANSI(line) > contentWidth {
+			line = fitRunes(line, contentWidth)
+		}
+		line += strings.Repeat(" ", maxValue(0, contentWidth-runeLenWithoutANSI(line)))
+		lines = append(lines, "│"+line+"│")
+	}
+	lines = append(lines, bottom)
+	return lines
+}
+
+func paneContentWidth(width int) int {
+	if width <= 2 {
+		return 1
+	}
+	return width - 2
+}
+
+func tuiMinimumHeight() int {
+	return 2 + 2*tuiSectionGapHeight + (tuiHeartbeatHeight + 1) + 3 + tuiHelpGapHeight + 1
+}
+
+func orderedRange(a int, b int) (int, int) {
+	if a <= b {
+		return a, b
+	}
+	return b, a
+}
+
+func logVisibleRange(rowCount int, height int, scroll int) (int, int) {
+	scroll = clampValue(scroll, 0, maxScroll(rowCount, height))
+	bottom := rowCount - scroll
+	if bottom < 0 {
+		bottom = 0
+	}
+	if bottom > rowCount {
+		bottom = rowCount
+	}
+	start := bottom - height
+	if start < 0 {
+		start = 0
+	}
+	return start, bottom
+}
+
+func (m tuiModel) copyStatusSuffix() string {
+	return m.copyStatus
 }
 
 func titleDivider(title string, width int) string {
@@ -717,6 +1046,13 @@ func maxScroll(rows int, height int) int {
 	return rows - height
 }
 
+func maxValue(a int, b int) int {
+	if a >= b {
+		return a
+	}
+	return b
+}
+
 func clampValue(value int, minValue int, maxValue int) int {
 	if value < minValue {
 		return minValue
@@ -799,6 +1135,25 @@ func fixRawField(raw string, tag string) string {
 		}
 	}
 	return ""
+}
+
+func runeLenWithoutANSI(value string) int {
+	count := 0
+	inEscape := false
+	for _, valueRune := range value {
+		if inEscape {
+			if valueRune == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		if valueRune == '\x1b' {
+			inEscape = true
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func heartbeatJSONLine(line string) (bool, string, string) {
