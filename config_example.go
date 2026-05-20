@@ -2,7 +2,7 @@ package fixtool
 
 import _ "embed"
 
-//go:embed config-example.toml
+//go:embed config/config-example.toml
 var configExampleTOML string
 
 //go:embed config/default.toml

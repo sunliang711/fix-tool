@@ -13,6 +13,14 @@ sudo install -m 0755 fix-tool /usr/local/bin/fix-tool
 fix-tool version
 ```
 
+使用安装脚本时默认只安装二进制。安装后可通过内嵌文档查看用法：
+
+```bash
+fix-tool docs
+fix-tool docs user-guide
+fix-tool docs faq
+```
+
 校验 checksum：
 
 ```bash
@@ -37,7 +45,7 @@ ls dist/release
 
 ## 从配置到下单
 
-创建公开配置 `config.toml`。完整字段说明见 [`config-example.toml`](config-example.toml)：
+创建公开配置 `config.toml`。完整字段说明见 [`config/config-example.toml`](config/config-example.toml)：
 
 ```bash
 fix-tool config example --output config-example.toml
@@ -133,7 +141,7 @@ fix-tool --config config.toml --private private.toml order new \
 后续只要新增、删除或调整配置项，必须同步更新：
 
 - `config/default.toml`（会内嵌进二进制）
-- `config-example.toml`
+- `config/config-example.toml`
 - `docs/project/fix-tool/user-guide.md`
 - `docs/project/fix-tool/conventions.md`
 - 对应的配置加载、校验和测试代码

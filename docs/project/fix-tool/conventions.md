@@ -56,7 +56,7 @@ testdata/
 - 配置加载统一放在 `internal/config`。
 - 加载顺序：内嵌 `config/default.toml` < `config.toml` < `private.toml` < 环境变量 < CLI flags。
 - 配置必须反序列化到强类型结构后再注入业务模块。
-- 新增、修改或删除配置字段时，必须同步更新 `config/default.toml`、`config-example.toml`、`fix-tool config example` 子命令输出、用户文档、配置规范、配置加载逻辑、校验逻辑和对应测试。
+- 新增、修改或删除配置字段时，必须同步更新 `config/default.toml`、`config/config-example.toml`、`fix-tool config example` 子命令输出、用户文档、配置规范、配置加载逻辑、校验逻辑和对应测试。
 - 密码、Token、证书私钥不得写入提交到 Git 的示例配置。
 - TLS 默认启用证书校验；允许通过 profile 显式修改，但必须输出英文风险提示。
 

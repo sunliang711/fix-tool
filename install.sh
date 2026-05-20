@@ -171,3 +171,10 @@ $SUDO mkdir -p "$INSTALL_DIR"
 $SUDO install -m 755 "${TMPDIR}/${PACKAGE}/${APP}" "${INSTALL_DIR}/${APP}"
 
 log "Installed ${APP} ${VERSION} to ${INSTALL_DIR}/${APP}"
+cat <<EOF
+
+Next steps:
+  ${APP} --help
+  ${APP} docs
+  ${APP} config example --output config-example.toml
+EOF

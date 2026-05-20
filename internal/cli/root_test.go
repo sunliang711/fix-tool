@@ -27,7 +27,7 @@ func TestRootHelp(t *testing.T) {
 	if !strings.Contains(out.String(), "FIX protocol testing CLI") {
 		t.Fatalf("help output = %q, want root help", out.String())
 	}
-	for _, want := range []string{"check", "order", "raw", "inspect", "shell", "run"} {
+	for _, want := range []string{"docs", "check", "order", "raw", "inspect", "shell", "run"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want command %q", out.String(), want)
 		}
@@ -102,6 +102,75 @@ func TestRunHelpShowsScenarioFlags(t *testing.T) {
 	for _, want := range []string{"Run FIX scenario steps", "--json", "--result-file", "--output-file"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("help output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
+func TestDocsIndexShowsTopics(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"docs"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	for _, want := range []string{"Bundled documentation topics", "user-guide", "faq"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("docs output = %q, want %q", out.String(), want)
+		}
+	}
+}
+
+func TestDocsUserGuideShowsBundledDocument(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"docs", "user-guide"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if out.String() != fixtool.UserGuideMarkdown() {
+		t.Fatalf("docs output mismatch")
+	}
+}
+
+func TestDocsFAQShowsBundledDocument(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"docs", "faq"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("ExecuteContext() error = %v", err)
+	}
+	if out.String() != fixtool.FAQMarkdown() {
+		t.Fatalf("docs output mismatch")
+	}
+}
+
+func TestDocsRejectsUnknownTopic(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	command := NewRootCommand(Args{"docs", "missing"}, IO{
+		Out:    &out,
+		ErrOut: &errOut,
+	}, zerolog.Nop())
+
+	err := command.ExecuteContext(context.Background())
+	if err == nil {
+		t.Fatal("ExecuteContext() error = nil, want unknown topic error")
+	}
+	for _, want := range []string{"unknown docs topic", "user-guide", "faq"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("ExecuteContext() error = %v, want %q", err, want)
 		}
 	}
 }

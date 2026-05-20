@@ -162,7 +162,7 @@ func TestSampleMockConfigValidates(t *testing.T) {
 
 func TestConfigExampleValidates(t *testing.T) {
 	cfg, err := config.Load(config.LoadOptions{
-		ConfigFile: filepath.Clean("../../config-example.toml"),
+		ConfigFile: filepath.Clean("../../config/config-example.toml"),
 	})
 	if err != nil {
 		t.Fatalf("Load() config example error = %v", err)

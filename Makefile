@@ -40,10 +40,10 @@ release:
 		arch=$${target#*/}; \
 		pkg="$(APP)_$(VERSION)_$${os}_$${arch}"; \
 		pkg_dir="$(DIST_DIR)/release/$$pkg"; \
-		mkdir -p "$$pkg_dir/docs/project/fix-tool" "$$pkg_dir/testdata/scenarios" "$$pkg_dir/testdata/dictionaries"; \
+		mkdir -p "$$pkg_dir/config" "$$pkg_dir/docs/project/fix-tool" "$$pkg_dir/testdata/scenarios" "$$pkg_dir/testdata/dictionaries"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LD_FLAGS)" -o "$$pkg_dir/$(APP)" $(CMD); \
 		cp README.md "$$pkg_dir/README.md"; \
-		cp config-example.toml "$$pkg_dir/config-example.toml"; \
+		cp config/config-example.toml "$$pkg_dir/config/config-example.toml"; \
 		cp docs/project/fix-tool/user-guide.md "$$pkg_dir/docs/project/fix-tool/user-guide.md"; \
 		cp docs/project/fix-tool/faq.md "$$pkg_dir/docs/project/fix-tool/faq.md"; \
 		cp testdata/scenarios/order-lifecycle.yaml "$$pkg_dir/testdata/scenarios/order-lifecycle.yaml"; \

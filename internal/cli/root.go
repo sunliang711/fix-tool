@@ -85,6 +85,7 @@ func NewRootCommand(args Args, io IO, logger zerolog.Logger) *RootCommand {
 	}
 
 	root.AddCommand(newVersionCommand(out))
+	root.AddCommand(newDocsCommand())
 	root.AddCommand(newConfigCommand(flags, logger))
 	root.AddCommand(newCheckCommand(flags, logger))
 	root.AddCommand(newOrderCommand(flags, logger))
