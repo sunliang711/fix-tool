@@ -178,7 +178,7 @@ func TestZerologLogFactoryWritesQuickFIXMessagesToOutput(t *testing.T) {
 
 	got := messageOut.String()
 	for _, want := range []string{
-		"===> Outgoing FIX Msg: ===>",
+		"===> Outgoing FIX Msg(Logon): ===>",
 		"Time:",
 		"Session:     " + sessionID.String(),
 		"Content:",
@@ -219,7 +219,7 @@ func TestZerologLogFactoryWritesHeartbeatContentToOutput(t *testing.T) {
 
 	got := messageOut.String()
 	for _, want := range []string{
-		"<=== Incoming FIX Msg: <===",
+		"<=== Incoming FIX Msg(Heartbeat): <===",
 		"Content:",
 		"  Raw:",
 		"35=0|",
@@ -257,6 +257,9 @@ func TestZerologLogFactoryUsesRawMessageSessionDirection(t *testing.T) {
 	log.OnIncoming([]byte(raw))
 
 	got := messageOut.String()
+	if !strings.Contains(got, "<=== Incoming FIX Msg(Logon): <===") {
+		t.Fatalf("message output = %q, want incoming raw message type", got)
+	}
 	if !strings.Contains(got, "Session:     FIX.4.4:ISLD->TW") {
 		t.Fatalf("message output = %q, want incoming raw message session direction", got)
 	}

@@ -292,7 +292,7 @@ func matchResponse(request requestIdentity, event fixsession.Event) bool {
 	}
 	msgType := eventMsgType(event)
 	switch msgType {
-	case message.MsgTypeExecutionReport:
+	case message.MsgTypeExecutionReport, message.MsgTypeOrderCancelReject:
 		return matchCorrelatedResponse(request, event, false)
 	case message.MsgTypeReject, message.MsgTypeBusinessMessageReject:
 		return matchCorrelatedResponse(request, event, true)

@@ -74,6 +74,43 @@ func TestServiceSendsNewOrderAndMatchesExecutionReport(t *testing.T) {
 	}
 }
 
+func TestServiceCancelOrderMatchesOrderCancelReject(t *testing.T) {
+	manager := newFakeManager()
+	manager.onStart = func() {
+		manager.emit(fixsession.Event{Type: fixsession.EventLogon})
+	}
+	manager.session.onSend = func(value *quickfix.Message) {
+		msgType := testHeaderValue(value, message.TagMsgType)
+		manager.emit(fixsession.Event{
+			Type:    fixsession.EventToApp,
+			MsgType: msgType,
+			Message: rawFromMessage(value),
+		})
+		manager.emit(fixsession.Event{
+			Type:    fixsession.EventFromApp,
+			MsgType: message.MsgTypeOrderCancelReject,
+			Message: rawFIX(message.MsgTypeOrderCancelReject, map[int]string{
+				message.TagClOrdID:     "C002",
+				message.TagOrigClOrdID: "C001",
+			}),
+		})
+	}
+	service := NewService(manager, Options{Timeout: time.Second})
+
+	result, err := service.CancelOrder(context.Background(), CancelRequest{
+		OrigClOrdID: "C001",
+		ClOrdID:     "C002",
+		Symbol:      "AAPL",
+		Side:        "buy",
+	})
+	if err != nil {
+		t.Fatalf("CancelOrder() error = %v", err)
+	}
+	if result.Response == nil || result.Response.MsgType != message.MsgTypeOrderCancelReject {
+		t.Fatalf("response trace = %#v, want order cancel reject", result.Response)
+	}
+}
+
 func TestMatchResponse(t *testing.T) {
 	request := requestIdentity{
 		MsgType:     message.MsgTypeOrderCancelReplaceRequest,
@@ -107,6 +144,27 @@ func TestMatchResponse(t *testing.T) {
 				message.TagOrderID: "O001",
 			}),
 			matches: true,
+		},
+		{
+			name: "order-cancel-reject-by-clordid",
+			event: inbound(message.MsgTypeOrderCancelReject, map[int]string{
+				message.TagClOrdID: "C002",
+			}),
+			matches: true,
+		},
+		{
+			name: "order-cancel-reject-by-orig-clordid",
+			event: inbound(message.MsgTypeOrderCancelReject, map[int]string{
+				message.TagOrigClOrdID: "C001",
+			}),
+			matches: true,
+		},
+		{
+			name: "unrelated-order-cancel-reject",
+			event: inbound(message.MsgTypeOrderCancelReject, map[int]string{
+				message.TagClOrdID: "OTHER",
+			}),
+			matches: false,
 		},
 		{
 			name: "unrelated-execution-report",

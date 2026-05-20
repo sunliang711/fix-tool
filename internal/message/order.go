@@ -15,6 +15,7 @@ const (
 	MsgTypeOrderCancelRequest        = "F"
 	MsgTypeOrderCancelReplaceRequest = "G"
 	MsgTypeExecutionReport           = "8"
+	MsgTypeOrderCancelReject         = "9"
 	MsgTypeReject                    = "3"
 	MsgTypeBusinessMessageReject     = "j"
 	SideBuy                          = "1"

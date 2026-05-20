@@ -279,7 +279,7 @@ func TestTUIModelRoutesFormattedHeartbeatBlockToPanel(t *testing.T) {
 	model.height = 30
 
 	message := strings.Join([]string{
-		"===> Outgoing FIX Msg: ===>",
+		"===> Outgoing FIX Msg(Heartbeat): ===>",
 		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
 		"Session:     FIX.4.4:CLIENT01->BROKER01",
 		"Content:",
@@ -322,7 +322,7 @@ func TestTUIModelKeepsFormattedNonHeartbeatBlockInLogs(t *testing.T) {
 	model.height = 30
 
 	message := strings.Join([]string{
-		"<=== Incoming FIX Msg: <===",
+		"<=== Incoming FIX Msg(Logon): <===",
 		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
 		"Session:     FIX.4.4:CLIENT01->BROKER01",
 		"Content:",
@@ -466,7 +466,7 @@ func TestTUIModelCopiesHeartbeatPaneLine(t *testing.T) {
 	model.height = 18
 
 	next, _ := model.Update(tuiOutputMsg(strings.Join([]string{
-		"===> Outgoing FIX Msg: ===>",
+		"===> Outgoing FIX Msg(Heartbeat): ===>",
 		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
 		"Session:     FIX.4.4:CLIENT01->BROKER01",
 		"Content:",
@@ -502,7 +502,7 @@ func TestTUIModelSelectedHeartbeatLineUsesFullLineSelectionColor(t *testing.T) {
 	model.height = 18
 
 	next, _ := model.Update(tuiOutputMsg(strings.Join([]string{
-		"===> Outgoing FIX Msg: ===>",
+		"===> Outgoing FIX Msg(Heartbeat): ===>",
 		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
 		"Session:     FIX.4.4:CLIENT01->BROKER01",
 		"Content:",

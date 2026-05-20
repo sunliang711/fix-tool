@@ -94,8 +94,8 @@ func TestCheckLogonWritesFIXMessagesToStdout(t *testing.T) {
 	}
 	output := out.String()
 	for _, want := range []string{
-		"===> Outgoing FIX Msg: ===>",
-		"<=== Incoming FIX Msg: <===",
+		"===> Outgoing FIX Msg(Logon): ===>",
+		"<=== Incoming FIX Msg(Logon): <===",
 		"Session:     FIX.4.4:CLI-LOGON-SENDER->CLI-LOGON-TARGET",
 		"Content:",
 		"  Raw:",
@@ -167,8 +167,8 @@ func TestOrderNewWritesOnlyFIXMessagesToStdout(t *testing.T) {
 	}
 	output := out.String()
 	for _, want := range []string{
-		"===> Outgoing FIX Msg: ===>",
-		"<=== Incoming FIX Msg: <===",
+		"===> Outgoing FIX Msg(NewOrderSingle): ===>",
+		"<=== Incoming FIX Msg(ExecutionReport): <===",
 		"MsgType:NewOrderSingle",
 		"MsgType:ExecutionReport",
 		"35 = D",

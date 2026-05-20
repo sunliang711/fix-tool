@@ -145,7 +145,7 @@ func (l zerologLog) writeFIXMessage(direction string, raw string) {
 	if titleColor != "" {
 		builder.WriteString(titleColor)
 	}
-	builder.WriteString(l.messageOutputTitle(direction))
+	builder.WriteString(l.messageOutputTitle(direction, raw))
 	builder.WriteByte('\n')
 	fmt.Fprintf(&builder, "Time:        %s\n", time.Now().UTC())
 	fmt.Fprintf(&builder, "Session:     %s\n", l.messageOutputSession(raw))
@@ -169,15 +169,31 @@ func (l zerologLog) writeFIXMessage(direction string, raw string) {
 	_, _ = io.WriteString(l.messageOutput, builder.String())
 }
 
-func (l zerologLog) messageOutputTitle(direction string) string {
+func (l zerologLog) messageOutputTitle(direction string, raw string) string {
+	msgType := l.messageOutputMsgType(raw)
 	switch direction {
 	case directionOut:
-		return "===> Outgoing FIX Msg: ===>"
+		return "===> Outgoing FIX Msg(" + msgType + "): ===>"
 	case directionIn:
-		return "<=== Incoming FIX Msg: <==="
+		return "<=== Incoming FIX Msg(" + msgType + "): <==="
 	default:
-		return "---- FIX Msg: ----"
+		return "---- FIX Msg(" + msgType + "): ----"
 	}
+}
+
+func (l zerologLog) messageOutputMsgType(raw string) string {
+	parsed, err := trace.ParseRaw(raw)
+	if err != nil {
+		return "Unknown"
+	}
+	msgCode := firstParsedValue(parsed.Fields, int(tagMsgType))
+	if msgCode == "" {
+		return "Unknown"
+	}
+	if msgName := l.messageName(msgCode); msgName != "" {
+		return msgName
+	}
+	return msgCode
 }
 
 func (l zerologLog) messageTitleColor(direction string) string {
