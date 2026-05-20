@@ -58,7 +58,7 @@ func TestScenarioRunWithMockAcceptor(t *testing.T) {
 	}
 }
 
-func TestCheckLogonOmitsRenderedTraceDetails(t *testing.T) {
+func TestCheckLogonWritesFIXMessagesToStdout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -92,24 +92,34 @@ func TestCheckLogonOmitsRenderedTraceDetails(t *testing.T) {
 	if err := command.ExecuteContext(ctx); err != nil {
 		t.Fatalf("ExecuteContext() error = %v, stderr = %s", err, errOut.String())
 	}
-	if out.String() != "" {
-		t.Fatalf("stdout = %s, want no rendered trace details", out.String())
-	}
-	output := errOut.String()
-	logoutIndex := strings.Index(output, "Logout(5)")
-	stopIndex := strings.Index(output, "fix session manager stopped")
-	for _, unwanted := range []string{"Logon Request", "Logon Response", "TraceID"} {
-		if strings.Contains(output, unwanted) {
-			t.Fatalf("stderr = %s, want no rendered trace detail %q", output, unwanted)
-		}
-	}
-	for _, want := range []string{"-> Logon(A)", "<- Logon(A)", "Logout(5)", "fix session manager stopped"} {
+	output := out.String()
+	for _, want := range []string{
+		"===> Outgoing FIX Msg: ===>",
+		"<=== Incoming FIX Msg: <===",
+		"Session:     FIX.4.4:CLI-LOGON-SENDER->CLI-LOGON-TARGET",
+		"Content:",
+		"  Raw:",
+		"  Pretty:",
+		"35=A|",
+		"MsgType:Logon",
+		"35 = A",
+		"35=5|",
+	} {
 		if !strings.Contains(output, want) {
-			t.Fatalf("stderr = %s, want %q", output, want)
+			t.Fatalf("stdout = %s, want %q", output, want)
 		}
 	}
-	if logoutIndex < 0 || stopIndex < 0 || logoutIndex > stopIndex {
-		t.Fatalf("stderr = %s, want auto logout before manager stop", output)
+	if strings.Contains(output, "TraceID") {
+		t.Fatalf("stdout = %s, want formatted FIX messages without rendered trace details", output)
+	}
+	logOutput := errOut.String()
+	for _, unwanted := range []string{"Outgoing FIX Msg", "Incoming FIX Msg", "-> Logon(A)", "<- Logon(A)"} {
+		if strings.Contains(logOutput, unwanted) {
+			t.Fatalf("stderr = %s, want no direct FIX message output %q", logOutput, unwanted)
+		}
+	}
+	if !strings.Contains(logOutput, "fix session manager stopped") {
+		t.Fatalf("stderr = %s, want manager stop log", logOutput)
 	}
 }
 

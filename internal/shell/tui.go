@@ -206,6 +206,10 @@ type tuiModel struct {
 	heartbeat  tuiHeartbeatState
 	hbBlock    string
 	hbDir      string
+	fixBlock   []string
+	fixDir     string
+	fixHB      bool
+	fixDecided bool
 }
 
 func newTUIModel(prompt string, reader *TUILineReader, output *TUIOutputWriter, done *tuiRunnerState) tuiModel {
@@ -459,6 +463,9 @@ func (m *tuiModel) appendOutput(output string) {
 }
 
 func (m *tuiModel) routeLogLine(line string) {
+	if m.consumeFIXMessageBlockLine(line) {
+		return
+	}
 	if m.hbBlock != "" && !strings.HasPrefix(line, " ") {
 		m.hbBlock = ""
 		m.hbDir = ""
@@ -467,6 +474,54 @@ func (m *tuiModel) routeLogLine(line string) {
 		return
 	}
 	m.appendLogLine(line)
+}
+
+func (m *tuiModel) consumeFIXMessageBlockLine(line string) bool {
+	if direction, ok := fixMessageBlockDirection(line); ok {
+		m.flushFIXMessageBlock()
+		m.fixBlock = append(m.fixBlock[:0], line)
+		m.fixDir = direction
+		m.fixHB = false
+		m.fixDecided = false
+		return true
+	}
+	if len(m.fixBlock) == 0 {
+		return false
+	}
+	if !isFIXMessageBlockLine(line) {
+		m.flushFIXMessageBlock()
+		return false
+	}
+	m.fixBlock = append(m.fixBlock, line)
+	if raw := fixMessageBlockRaw(line); raw != "" {
+		m.fixDecided = true
+		if fixRawField(raw, "35") == "0" {
+			m.fixHB = true
+			m.setHeartbeatRaw(m.fixDir, raw)
+		}
+	}
+	if m.fixHB {
+		return true
+	}
+	if m.fixDecided {
+		m.flushFIXMessageBlock()
+	}
+	return true
+}
+
+func (m *tuiModel) flushFIXMessageBlock() {
+	if len(m.fixBlock) == 0 {
+		return
+	}
+	if !m.fixHB {
+		for _, line := range m.fixBlock {
+			m.appendLogLine(line)
+		}
+	}
+	m.fixBlock = nil
+	m.fixDir = ""
+	m.fixHB = false
+	m.fixDecided = false
 }
 
 func (m *tuiModel) consumeHeartbeatLine(line string) bool {
@@ -703,6 +758,47 @@ func rawMessageValue(line string) string {
 		return ""
 	}
 	return strings.TrimSpace(line[index+len("raw_message="):])
+}
+
+func fixMessageBlockDirection(line string) (string, bool) {
+	if strings.Contains(line, "Outgoing FIX Msg") {
+		return "out", true
+	}
+	if strings.Contains(line, "Incoming FIX Msg") {
+		return "in", true
+	}
+	return "", false
+}
+
+func fixMessageBlockRaw(line string) string {
+	value := strings.TrimSpace(line)
+	value = strings.TrimSpace(strings.TrimPrefix(value, "|"))
+	if !strings.HasPrefix(value, "8=") || fixRawField(value, "35") == "" {
+		return ""
+	}
+	return value
+}
+
+func isFIXMessageBlockLine(line string) bool {
+	if strings.HasPrefix(line, "|") {
+		return true
+	}
+	if strings.HasPrefix(line, "  ") {
+		return true
+	}
+	return strings.HasPrefix(line, "Time:") ||
+		strings.HasPrefix(line, "Session:") ||
+		strings.HasPrefix(line, "Content:")
+}
+
+func fixRawField(raw string, tag string) string {
+	prefix := tag + "="
+	for _, field := range strings.Split(raw, "|") {
+		if value, ok := strings.CutPrefix(field, prefix); ok {
+			return value
+		}
+	}
+	return ""
 }
 
 func heartbeatJSONLine(line string) (bool, string, string) {

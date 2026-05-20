@@ -98,7 +98,9 @@ func (r rawRunner) runSend(ctx context.Context, out io.Writer, errOut io.Writer,
 		return err
 	}
 	logLoadedConfigFiles(configuredLogger, cfg)
-	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
+	manager, err := fixsession.NewManagerWithOptions(cfg.Profile, configuredLogger, fixsession.ManagerOptions{
+		MessageOutput: out,
+	})
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
 		return err

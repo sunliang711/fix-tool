@@ -79,7 +79,9 @@ func (r scenarioRunner) run(cmd *cobra.Command, scenarioFile string, runFlags *s
 		configuredLogger.Error().Err(err).Msg("failed to load scenario")
 		return err
 	}
-	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
+	manager, err := fixsession.NewManagerWithOptions(cfg.Profile, configuredLogger, fixsession.ManagerOptions{
+		MessageOutput: cmd.OutOrStdout(),
+	})
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
 		return err

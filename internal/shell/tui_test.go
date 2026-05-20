@@ -270,6 +270,86 @@ func TestTUIModelRoutesJSONHeartbeatRawToPanel(t *testing.T) {
 	}
 }
 
+func TestTUIModelRoutesFormattedHeartbeatBlockToPanel(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 180
+	model.height = 20
+
+	message := strings.Join([]string{
+		"===> Outgoing FIX Msg: ===>",
+		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
+		"Session:     FIX.4.4:CLIENT01->BROKER01",
+		"Content:",
+		"  Raw:",
+		"    8=FIX.4.4|9=59|35=0|34=9|49=CLIENT01|10=034|",
+		"  Pretty:",
+		"    MsgType:Heartbeat 35 = 0",
+		"2026-05-20T03:14:38Z INF business log",
+		"",
+	}, "\n")
+
+	next, _ := model.Update(tuiOutputMsg(message))
+	model = next.(tuiModel)
+	rawView := model.View()
+	if !strings.Contains(rawView, tuiHeartbeatColor+"34=9"+tuiColorReset) {
+		t.Fatalf("view = %q, want colored heartbeat MsgSeqNum", rawView)
+	}
+	view := stripTUIANSICodes(rawView)
+	for _, unwanted := range []string{"Outgoing FIX Msg", "MsgType:Heartbeat", "35 = 0"} {
+		if strings.Contains(view, unwanted) {
+			t.Fatalf("view = %q, want formatted heartbeat block hidden from logs", view)
+		}
+	}
+	for _, want := range []string{
+		"business log",
+		"OUT raw_message=8=FIX.4.4|9=59|35=0|34=9|49=CLIENT01|10=034|",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view = %q, want %q", view, want)
+		}
+	}
+}
+
+func TestTUIModelKeepsFormattedNonHeartbeatBlockInLogs(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 180
+	model.height = 20
+
+	message := strings.Join([]string{
+		"<=== Incoming FIX Msg: <===",
+		"Time:        2026-05-20 03:14:37.024773 +0000 UTC",
+		"Session:     FIX.4.4:CLIENT01->BROKER01",
+		"Content:",
+		"  Raw:",
+		"    8=FIX.4.4|9=59|35=A|34=9|49=BROKER01|10=034|",
+		"  Pretty:",
+		"    MsgType:Logon 35 = A",
+		"",
+	}, "\n")
+
+	next, _ := model.Update(tuiOutputMsg(message))
+	model = next.(tuiModel)
+	view := stripTUIANSICodes(model.View())
+	for _, want := range []string{
+		"Incoming FIX Msg",
+		"35=A|",
+		"MsgType:Logon",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view = %q, want %q", view, want)
+		}
+	}
+	if strings.Contains(view, "IN  raw_message=8=FIX.4.4|9=59|35=A|") {
+		t.Fatalf("view = %q, want non-heartbeat block outside heartbeat panel", view)
+	}
+}
+
 func TestTUIModelStartsWithMouseWheelDisabled(t *testing.T) {
 	reader := NewTUILineReader()
 	output := NewTUIOutputWriter()

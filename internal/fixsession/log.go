@@ -2,12 +2,18 @@ package fixsession
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"fix-tool/internal/config"
 	"fix-tool/internal/dictionary"
 	"fix-tool/internal/trace"
 
+	"github.com/mattn/go-isatty"
 	"github.com/quickfixgo/quickfix"
 	"github.com/rs/zerolog"
 )
@@ -15,12 +21,19 @@ import (
 const (
 	directionOut = "out"
 	directionIn  = "in"
+
+	ansiReset    = "\x1b[0m"
+	ansiOutgoing = "\x1b[38;5;213m"
+	ansiIncoming = "\x1b[38;5;147m"
 )
 
 type zerologLogFactory struct {
 	logger        zerolog.Logger
 	sensitiveTags map[quickfix.Tag]struct{}
 	dictionary    *dictionary.Dictionary
+	messageOutput io.Writer
+	messageColor  bool
+	messageMu     *sync.Mutex
 }
 
 type zerologLog struct {
@@ -28,13 +41,27 @@ type zerologLog struct {
 	session       string
 	sensitiveTags map[quickfix.Tag]struct{}
 	dictionary    *dictionary.Dictionary
+	messageOutput io.Writer
+	messageColor  bool
+	messageMu     *sync.Mutex
 }
 
 func newZerologLogFactory(logger zerolog.Logger, profile config.ProfileConfig) quickfix.LogFactory {
+	return newZerologLogFactoryWithOptions(logger, profile, quickFIXLogOptions{})
+}
+
+type quickFIXLogOptions struct {
+	messageOutput io.Writer
+}
+
+func newZerologLogFactoryWithOptions(logger zerolog.Logger, profile config.ProfileConfig, options quickFIXLogOptions) quickfix.LogFactory {
 	return zerologLogFactory{
 		logger:        logger,
 		sensitiveTags: sensitiveTagsFromProfile(profile),
 		dictionary:    dictionary.NewFromConfig(profile.CustomFieldDefs),
+		messageOutput: options.messageOutput,
+		messageColor:  shouldColorMessageOutput(options.messageOutput),
+		messageMu:     &sync.Mutex{},
 	}
 }
 
@@ -43,6 +70,9 @@ func (f zerologLogFactory) Create() (quickfix.Log, error) {
 		logger:        f.logger,
 		sensitiveTags: f.sensitiveTags,
 		dictionary:    f.dictionary,
+		messageOutput: f.messageOutput,
+		messageColor:  f.messageColor,
+		messageMu:     f.messageMu,
 	}, nil
 }
 
@@ -52,6 +82,9 @@ func (f zerologLogFactory) CreateSessionLog(sessionID quickfix.SessionID) (quick
 		session:       sessionID.String(),
 		sensitiveTags: f.sensitiveTags,
 		dictionary:    f.dictionary,
+		messageOutput: f.messageOutput,
+		messageColor:  f.messageColor,
+		messageMu:     f.messageMu,
 	}, nil
 }
 
@@ -85,6 +118,10 @@ func (l zerologLog) OnEventf(format string, values ...interface{}) {
 
 func (l zerologLog) logMessage(direction string, message []byte) {
 	raw := redactFIXMessage(string(message), l.sensitiveTags)
+	if l.messageOutput != nil {
+		l.writeFIXMessage(direction, raw)
+		return
+	}
 	parsed, err := trace.ParseRaw(raw)
 	if err != nil {
 		l.logUnparsedMessage(direction, raw, err)
@@ -100,6 +137,124 @@ func (l zerologLog) logMessage(direction string, message []byte) {
 	event = l.appendSummaryFields(event, parsed.Fields)
 	event.Msg(l.messageLogTitle(direction, msgName, msgCode))
 	l.logDebugMessage(direction, raw, msgName, msgCode)
+}
+
+func (l zerologLog) writeFIXMessage(direction string, raw string) {
+	var builder strings.Builder
+	titleColor := l.messageTitleColor(direction)
+	if titleColor != "" {
+		builder.WriteString(titleColor)
+	}
+	builder.WriteString(l.messageOutputTitle(direction))
+	builder.WriteByte('\n')
+	fmt.Fprintf(&builder, "Time:        %s\n", time.Now().UTC())
+	fmt.Fprintf(&builder, "Session:     %s\n", l.messageOutputSession(raw))
+	builder.WriteString("Content:\n")
+	builder.WriteString("  Raw:\n")
+	fmt.Fprintf(&builder, "    %s\n", trace.DisplayRaw(raw, "|"))
+	builder.WriteString("  Pretty:\n")
+	for _, line := range l.prettyFIXMessageLines(raw) {
+		fmt.Fprintf(&builder, "    %s\n", line)
+	}
+	if titleColor != "" {
+		builder.WriteString(ansiReset)
+	}
+
+	if l.messageMu == nil {
+		_, _ = io.WriteString(l.messageOutput, builder.String())
+		return
+	}
+	l.messageMu.Lock()
+	defer l.messageMu.Unlock()
+	_, _ = io.WriteString(l.messageOutput, builder.String())
+}
+
+func (l zerologLog) messageOutputTitle(direction string) string {
+	switch direction {
+	case directionOut:
+		return "===> Outgoing FIX Msg: ===>"
+	case directionIn:
+		return "<=== Incoming FIX Msg: <==="
+	default:
+		return "---- FIX Msg: ----"
+	}
+}
+
+func (l zerologLog) messageTitleColor(direction string) string {
+	if !l.messageColor {
+		return ""
+	}
+	switch direction {
+	case directionOut:
+		return ansiOutgoing
+	case directionIn:
+		return ansiIncoming
+	default:
+		return ""
+	}
+}
+
+func (l zerologLog) messageOutputSession(raw string) string {
+	parsed, err := trace.ParseRaw(raw)
+	if err == nil {
+		beginString := firstParsedValue(parsed.Fields, 8)
+		sender := firstParsedValue(parsed.Fields, 49)
+		target := firstParsedValue(parsed.Fields, 56)
+		if beginString != "" && sender != "" && target != "" {
+			return beginString + ":" + sender + "->" + target
+		}
+	}
+	if l.session == "" {
+		return "-"
+	}
+	return l.session
+}
+
+func shouldColorMessageOutput(output io.Writer) bool {
+	if output == nil || os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	file, ok := output.(*os.File)
+	return ok && isatty.IsTerminal(file.Fd())
+}
+
+func (l zerologLog) prettyFIXMessageLines(raw string) []string {
+	parsed, err := trace.ParseRaw(raw)
+	if err != nil {
+		return []string{trace.DisplayRaw(raw, "|")}
+	}
+	type prettyField struct {
+		name  string
+		tag   string
+		value string
+	}
+	fields := make([]prettyField, 0, len(parsed.Fields))
+	maxNameWidth := 0
+	maxTagWidth := 0
+	for _, field := range parsed.Fields {
+		value := field.Value
+		if _, ok := l.sensitiveTags[quickfix.Tag(field.Tag)]; ok {
+			value = redactedValue
+		}
+		name := l.prettyFieldName(field)
+		tag := strconv.Itoa(field.Tag)
+		fields = append(fields, prettyField{
+			name:  name,
+			tag:   tag,
+			value: value,
+		})
+		if len(name) > maxNameWidth {
+			maxNameWidth = len(name)
+		}
+		if len(tag) > maxTagWidth {
+			maxTagWidth = len(tag)
+		}
+	}
+	lines := make([]string, 0, len(fields))
+	for _, field := range fields {
+		lines = append(lines, fmt.Sprintf("%-*s %*s = %s", maxNameWidth, field.name, maxTagWidth, field.tag, field.value))
+	}
+	return lines
 }
 
 func (l zerologLog) isWarningEvent(message string) bool {

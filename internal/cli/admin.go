@@ -78,7 +78,7 @@ func newCheckCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 
 func (r adminRunner) run(
 	ctx context.Context,
-	_ io.Writer,
+	out io.Writer,
 	errOut io.Writer,
 	title string,
 	operation func(context.Context, *admin.Service) (admin.Result, error),
@@ -105,7 +105,9 @@ func (r adminRunner) run(
 		return err
 	}
 	logLoadedConfigFiles(configuredLogger, cfg)
-	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
+	manager, err := fixsession.NewManagerWithOptions(cfg.Profile, configuredLogger, fixsession.ManagerOptions{
+		MessageOutput: out,
+	})
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
 		return err

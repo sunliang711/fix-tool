@@ -155,6 +155,113 @@ func TestZerologLogFactoryRedactsQuickFIXMessages(t *testing.T) {
 	}
 }
 
+func TestZerologLogFactoryWritesQuickFIXMessagesToOutput(t *testing.T) {
+	var logOut bytes.Buffer
+	var messageOut bytes.Buffer
+	logger := zerolog.New(&logOut).Level(zerolog.DebugLevel)
+	sessionID := quickfix.SessionID{
+		BeginString:  "FIX.4.4",
+		SenderCompID: "SENDER",
+		TargetCompID: "TARGET",
+	}
+	logFactory := newZerologLogFactoryWithOptions(logger, validProfile(), quickFIXLogOptions{
+		messageOutput: &messageOut,
+	})
+	log, err := logFactory.CreateSessionLog(sessionID)
+	if err != nil {
+		t.Fatalf("CreateSessionLog() error = %v", err)
+	}
+	message := quickfix.NewMessage()
+	message.Header.SetString(tagMsgType, msgTypeLogon)
+
+	log.OnOutgoing([]byte(message.String()))
+
+	got := messageOut.String()
+	for _, want := range []string{
+		"===> Outgoing FIX Msg: ===>",
+		"Time:",
+		"Session:     " + sessionID.String(),
+		"Content:",
+		"  Raw:",
+		"  Pretty:",
+		"35=A|",
+		"MsgType:Logon",
+		"35 = A",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("message output = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("message output = %q, want no ANSI color for non-terminal writer", got)
+	}
+	if strings.Contains(logOut.String(), "Outgoing FIX Msg") {
+		t.Fatalf("log output = %q, want direct message output outside logger", logOut.String())
+	}
+}
+
+func TestZerologLogFactoryWritesHeartbeatContentToOutput(t *testing.T) {
+	var logOut bytes.Buffer
+	var messageOut bytes.Buffer
+	logger := zerolog.New(&logOut).Level(zerolog.DebugLevel)
+	logFactory := newZerologLogFactoryWithOptions(logger, validProfile(), quickFIXLogOptions{
+		messageOutput: &messageOut,
+	})
+	log, err := logFactory.Create()
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	message := quickfix.NewMessage()
+	message.Header.SetString(tagMsgType, "0")
+	message.Body.SetString(quickfix.Tag(112), "ping-001")
+
+	log.OnIncoming([]byte(message.String()))
+
+	got := messageOut.String()
+	for _, want := range []string{
+		"<=== Incoming FIX Msg: <===",
+		"Content:",
+		"  Raw:",
+		"35=0|",
+		"112=ping-001|",
+		"  Pretty:",
+		"MsgType:Heartbeat",
+		"35 = 0",
+		"TestReqID",
+		"112 = ping-001",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("message output = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestZerologLogFactoryUsesRawMessageSessionDirection(t *testing.T) {
+	var logOut bytes.Buffer
+	var messageOut bytes.Buffer
+	logger := zerolog.New(&logOut).Level(zerolog.DebugLevel)
+	sessionID := quickfix.SessionID{
+		BeginString:  "FIX.4.4",
+		SenderCompID: "TW",
+		TargetCompID: "ISLD",
+	}
+	logFactory := newZerologLogFactoryWithOptions(logger, validProfile(), quickFIXLogOptions{
+		messageOutput: &messageOut,
+	})
+	log, err := logFactory.CreateSessionLog(sessionID)
+	if err != nil {
+		t.Fatalf("CreateSessionLog() error = %v", err)
+	}
+	raw := "8=FIX.4.4|9=67|35=A|34=1|49=ISLD|52=20260520-03:41:56.007|56=TW|98=0|108=10|141=Y|10=000|"
+
+	log.OnIncoming([]byte(raw))
+
+	got := messageOut.String()
+	if !strings.Contains(got, "Session:     FIX.4.4:ISLD->TW") {
+		t.Fatalf("message output = %q, want incoming raw message session direction", got)
+	}
+}
+
 func TestZerologLogFactoryLogsServerToClientMessages(t *testing.T) {
 	var out bytes.Buffer
 	logger := zerolog.New(&out).Level(zerolog.InfoLevel)

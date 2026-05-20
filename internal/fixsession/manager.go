@@ -3,6 +3,7 @@ package fixsession
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	"fix-tool/internal/config"
@@ -27,18 +28,29 @@ type QuickFIXManager struct {
 	started   bool
 }
 
+type ManagerOptions struct {
+	MessageOutput io.Writer
+}
+
 var Module = fx.Options(
 	fx.Provide(fx.Annotate(NewManager, fx.As(new(Manager)))),
 	fx.Invoke(RegisterLifecycle),
 )
 
 func NewManager(profile config.ProfileConfig, logger zerolog.Logger) (*QuickFIXManager, error) {
+	return NewManagerWithOptions(profile, logger, ManagerOptions{})
+}
+
+func NewManagerWithOptions(profile config.ProfileConfig, logger zerolog.Logger, options ManagerOptions) (*QuickFIXManager, error) {
 	settings, sessionID, err := SettingsFromProfile(profile)
 	if err != nil {
 		return nil, err
 	}
 	app := newApplication(profile, make(chan Event, defaultEventBuffer))
-	initiator, err := quickfix.NewInitiator(app, quickfix.NewMemoryStoreFactory(), settings, newZerologLogFactory(logger, profile))
+	logFactory := newZerologLogFactoryWithOptions(logger, profile, quickFIXLogOptions{
+		messageOutput: options.MessageOutput,
+	})
+	initiator, err := quickfix.NewInitiator(app, quickfix.NewMemoryStoreFactory(), settings, logFactory)
 	if err != nil {
 		return nil, fmt.Errorf("create quickfix initiator: %w", err)
 	}

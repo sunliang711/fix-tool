@@ -66,7 +66,9 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		return err
 	}
 	logLoadedConfigFiles(configuredLogger, cfg)
-	manager, err := fixsession.NewManager(cfg.Profile, configuredLogger)
+	manager, err := fixsession.NewManagerWithOptions(cfg.Profile, configuredLogger, fixsession.ManagerOptions{
+		MessageOutput: out,
+	})
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to create fix session manager")
 		return err
