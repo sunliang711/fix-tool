@@ -85,7 +85,7 @@ CLIENT_CONFIG="$OUTPUT_DIR/ordermatch-client.toml"
 SERVER_LOG="$OUTPUT_DIR/ordermatch-server.log"
 SUMMARY_FILE="$OUTPUT_DIR/summary.tsv"
 CONNECTIVITY_LOG="$OUTPUT_DIR/connectivity.log"
-SERVER_STDIN="$OUTPUT_DIR/ordermatch.stdin"
+SERVER_TYPESCRIPT="$OUTPUT_DIR/ordermatch.typescript"
 SERVER_PID=""
 LOG_DIR_PRINTED=0
 FINAL_LOG_DIR_PRINTED=0
@@ -131,6 +131,11 @@ trap cleanup EXIT
 require_file() {
 	local path="$1"
 	[[ -e "$path" ]] || fail "Missing required path: $path"
+}
+
+require_command() {
+	local command="$1"
+	command -v "$command" >/dev/null 2>&1 || fail "Missing required command: $command"
 }
 
 wait_for_port() {
@@ -209,18 +214,30 @@ build_binaries() {
 	fi
 }
 
+start_ordermatch_with_pty() {
+	if script -q /dev/null true >/dev/null 2>&1; then
+		script -q "$SERVER_TYPESCRIPT" env TERM=xterm-256color "$ORDERMATCH_BIN" ordermatch "$ORDERMATCH_DIR/config/ordermatch.cfg" >"$SERVER_LOG" 2>&1 &
+		SERVER_PID="$!"
+		return
+	fi
+	if script -q -c "true" /dev/null >/dev/null 2>&1; then
+		script -q -c "TERM=xterm-256color \"$ORDERMATCH_BIN\" ordermatch \"$ORDERMATCH_DIR/config/ordermatch.cfg\"" "$SERVER_TYPESCRIPT" >"$SERVER_LOG" 2>&1 &
+		SERVER_PID="$!"
+		return
+	fi
+	fail "script command cannot allocate a pseudo terminal on this system"
+}
+
 start_ordermatch() {
 	[[ "$START_ORDERMATCH" == "1" ]] || return 0
 
+	require_command script
 	if (: >/dev/tcp/127.0.0.1/5001) >/dev/null 2>&1; then
 		fail "127.0.0.1:5001 is already in use; stop the existing ordermatch server or run without OM=1"
 	fi
 
-	mkfifo "$SERVER_STDIN"
 	log "Starting ordermatch server"
-	"$ORDERMATCH_BIN" ordermatch "$ORDERMATCH_DIR/config/ordermatch.cfg" <"$SERVER_STDIN" >"$SERVER_LOG" 2>&1 &
-	SERVER_PID="$!"
-	exec 3>"$SERVER_STDIN"
+	start_ordermatch_with_pty
 
 	wait_for_port 127.0.0.1 5001 || fail "ordermatch did not listen on 127.0.0.1:5001"
 	log "ordermatch server is ready pid=$SERVER_PID"
@@ -231,9 +248,8 @@ query_market() {
 	[[ "$START_ORDERMATCH" == "1" ]] || return 0
 	[[ -n "$symbol" ]] || return 0
 
-	log "Querying market: $symbol"
-	printf '%s\n' "$symbol" >&3
-	sleep 0.3
+	# PTY 自启动下不再向 TUI stdin 写入 symbol；回放结果以 FIX 响应日志为准。
+	return 0
 }
 
 extract_raw_messages() {
