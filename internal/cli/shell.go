@@ -65,7 +65,7 @@ func (r shellRunner) run(cmd *cobra.Command) error {
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
-	logLoadedConfigFiles(configuredLogger, cfg)
+	logStartupConfiguration(configuredLogger, cfg)
 	manager, err := fixsession.NewManagerWithOptions(cfg.Profile, configuredLogger, fixsession.ManagerOptions{
 		MessageOutput: out,
 	})

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	fixtool "fix-tool"
+	"fix-tool/internal/config"
 
 	"github.com/rs/zerolog"
 )
@@ -494,6 +495,76 @@ func TestConfigValidate(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "configuration is valid") {
 		t.Fatalf("validate output = %q, want success message", out.String())
+	}
+}
+
+func TestLogStartupConfigurationIncludesSafeFields(t *testing.T) {
+	var out bytes.Buffer
+	logger := zerolog.New(&out)
+	cfg := &config.AppConfig{
+		Log: config.LogConfig{
+			Level:  "info",
+			Format: "json",
+		},
+		Profile: config.ProfileConfig{
+			Name:              "uat",
+			BeginString:       "FIX.4.4",
+			SenderCompID:      "CLIENT01",
+			TargetCompID:      "BROKER01",
+			Username:          "alice",
+			Password:          "secret",
+			Host:              "fix.example.test",
+			Port:              9876,
+			HeartbeatInterval: "30s",
+			ResetOnLogon:      true,
+			TLS: config.TLSConfig{
+				Enabled:            true,
+				InsecureSkipVerify: true,
+			},
+			CustomFieldDefs: []config.CustomFieldDefConfig{
+				{Tag: 9001, Name: "SessionToken", Type: "STRING", Sensitive: true},
+			},
+			LogonTags: []config.LogonTagConfig{
+				{Tag: 9001, Value: "token-secret"},
+			},
+		},
+		Output: config.OutputConfig{
+			Format:          "table",
+			RawDelimiter:    "|",
+			RedactSensitive: true,
+		},
+		DefaultSource: "embedded:config/default.toml",
+		LoadedFiles:   []string{"config.toml", "private.toml"},
+	}
+
+	logStartupConfiguration(logger, cfg)
+	logOutput := out.String()
+	for _, want := range []string{
+		`"profile_name":"uat"`,
+		`"session_id":"FIX.4.4:CLIENT01->BROKER01"`,
+		`"begin_string":"FIX.4.4"`,
+		`"sender_comp_id":"CLIENT01"`,
+		`"target_comp_id":"BROKER01"`,
+		`"host":"fix.example.test"`,
+		`"port":9876`,
+		`"heartbeat_interval":"30s"`,
+		`"reset_on_logon":true`,
+		`"tls_enabled":true`,
+		`"tls_insecure_skip_verify":true`,
+		`"username_configured":true`,
+		`"password_configured":true`,
+		`"custom_field_defs_count":1`,
+		`"logon_tags_count":1`,
+		`"message":"tls certificate verification is disabled"`,
+	} {
+		if !strings.Contains(logOutput, want) {
+			t.Fatalf("log output = %s, want %s", logOutput, want)
+		}
+	}
+	for _, unwanted := range []string{"alice", "secret", "token-secret"} {
+		if strings.Contains(logOutput, unwanted) {
+			t.Fatalf("log output = %s, want no sensitive value %q", logOutput, unwanted)
+		}
 	}
 }
 

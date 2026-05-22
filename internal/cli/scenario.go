@@ -73,7 +73,7 @@ func (r scenarioRunner) run(cmd *cobra.Command, scenarioFile string, runFlags *s
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
-	logLoadedConfigFiles(configuredLogger, cfg)
+	logStartupConfiguration(configuredLogger, cfg)
 	loadedScenario, err := scenario.Load(scenarioFile)
 	if err != nil {
 		configuredLogger.Error().Err(err).Msg("failed to load scenario")

@@ -60,7 +60,7 @@ func newInspectCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 		Short: "Inspect a raw FIX message",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.runRaw(cmd.OutOrStdout(), args[0])
+			return runner.runRaw(cmd.OutOrStdout(), cmd.ErrOrStderr(), args[0])
 		},
 	}
 	inspectCmd.AddCommand(rawCmd)
@@ -97,7 +97,7 @@ func (r rawRunner) runSend(ctx context.Context, out io.Writer, errOut io.Writer,
 		r.logger.Error().Err(err).Msg("failed to configure logger")
 		return err
 	}
-	logLoadedConfigFiles(configuredLogger, cfg)
+	logStartupConfiguration(configuredLogger, cfg)
 	manager, err := fixsession.NewManagerWithOptions(cfg.Profile, configuredLogger, fixsession.ManagerOptions{
 		MessageOutput: out,
 	})
@@ -114,7 +114,7 @@ func (r rawRunner) runSend(ctx context.Context, out io.Writer, errOut io.Writer,
 	return renderRawResult(out, cfg, result)
 }
 
-func (r inspectRunner) runRaw(out io.Writer, rawMessage string) error {
+func (r inspectRunner) runRaw(out io.Writer, errOut io.Writer, rawMessage string) error {
 	cfg, err := config.Load(config.LoadOptions{
 		DefaultFile:  r.flags.defaultConfig,
 		ConfigFile:   r.flags.configFile,
@@ -131,6 +131,12 @@ func (r inspectRunner) runRaw(out io.Writer, rawMessage string) error {
 		r.logger.Error().Err(err).Msg("configuration validation failed")
 		return err
 	}
+	configuredLogger, err := logging.New(errOut, cfg.Log)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("failed to configure logger")
+		return err
+	}
+	logStartupConfiguration(configuredLogger, cfg)
 	messageTrace, err := trace.NewMessageTrace(trace.BuildOptions{
 		TraceID:   fmt.Sprintf("inspect-raw-%d", time.Now().UTC().UnixNano()),
 		Profile:   cfg.Profile.Name,

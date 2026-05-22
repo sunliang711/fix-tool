@@ -139,10 +139,7 @@ func newConfigCommand(flags *flagState, logger zerolog.Logger) *cobra.Command {
 				logger.Error().Err(err).Msg("failed to configure logger")
 				return err
 			}
-			logLoadedConfigFiles(configuredLogger, cfg)
-			if cfg.Profile.TLS.Enabled && cfg.Profile.TLS.InsecureSkipVerify {
-				configuredLogger.Warn().Msg("tls certificate verification is disabled")
-			}
+			logStartupConfiguration(configuredLogger, cfg)
 			configuredLogger.Info().Str("profile", cfg.Profile.Name).Msg("configuration is valid")
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), "configuration is valid")
 			return err
@@ -162,6 +159,52 @@ func logLoadedConfigFiles(logger zerolog.Logger, cfg *config.AppConfig) {
 			logger.Warn().Str("deprecated_key", key).Str("replacement", "profile.custom_field_defs").Msg("configuration key is deprecated")
 		}
 	}
+}
+
+// logStartupConfiguration 输出启动时用于排障的关键配置，避免记录密码和自定义登录 tag 值。
+func logStartupConfiguration(logger zerolog.Logger, cfg *config.AppConfig) {
+	if cfg == nil {
+		return
+	}
+	logLoadedConfigFiles(logger, cfg)
+	logger.Info().
+		Str("profile_name", cfg.Profile.Name).
+		Str("log_level", cfg.Log.Level).
+		Str("log_format", cfg.Log.Format).
+		Str("output_format", cfg.Output.Format).
+		Bool("redact_sensitive", cfg.Output.RedactSensitive).
+		Strs("loaded_config_files", cfg.LoadedFiles).
+		Msg("startup configuration loaded")
+	logger.Info().
+		Str("session_id", fixSessionID(cfg)).
+		Str("begin_string", cfg.Profile.BeginString).
+		Str("sender_comp_id", cfg.Profile.SenderCompID).
+		Str("target_comp_id", cfg.Profile.TargetCompID).
+		Str("host", cfg.Profile.Host).
+		Int("port", cfg.Profile.Port).
+		Str("heartbeat_interval", cfg.Profile.HeartbeatInterval).
+		Bool("reset_on_logon", cfg.Profile.ResetOnLogon).
+		Bool("tls_enabled", cfg.Profile.TLS.Enabled).
+		Bool("tls_insecure_skip_verify", cfg.Profile.TLS.InsecureSkipVerify).
+		Bool("username_configured", cfg.Profile.Username != "").
+		Bool("password_configured", cfg.Profile.Password != "").
+		Str("data_dictionary", cfg.Profile.DataDictionary).
+		Str("transport_data_dictionary", cfg.Profile.TransportDataDictionary).
+		Str("app_data_dictionary", cfg.Profile.AppDataDictionary).
+		Int("custom_field_defs_count", len(cfg.Profile.CustomFieldDefs)).
+		Int("logon_tags_count", len(cfg.Profile.LogonTags)).
+		Msg("fix session configured")
+	if cfg.Profile.TLS.Enabled && cfg.Profile.TLS.InsecureSkipVerify {
+		logger.Warn().Msg("tls certificate verification is disabled")
+	}
+}
+
+// fixSessionID 返回用于日志定位的 FIX session 标识。
+func fixSessionID(cfg *config.AppConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Profile.BeginString + ":" + cfg.Profile.SenderCompID + "->" + cfg.Profile.TargetCompID
 }
 
 func newConfigExampleCommand() *cobra.Command {

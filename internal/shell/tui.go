@@ -20,8 +20,6 @@ const (
 	tuiLogsTitleHeight  = 1
 	tuiSectionGapHeight = 1
 	tuiHeartbeatHeight  = 3
-	tuiHelpGapHeight    = 2
-	tuiInputHeight      = 3 + tuiHelpGapHeight
 	maxTUILogLines      = 10000
 	tuiShutdownTimeout  = 5 * time.Second
 	tuiOutputBufferSize = 4096
@@ -29,6 +27,7 @@ const (
 	tuiPromptColor      = "\x1b[1;36m"
 	tuiHeartbeatColor   = "\x1b[1;33m"
 	tuiSelectionColor   = "\x1b[7m"
+	tuiHelpColor        = "\x1b[2m"
 	tuiColorReset       = "\x1b[0m"
 )
 
@@ -240,6 +239,7 @@ type tuiModel struct {
 	focus      tuiPane
 	mode       tuiMode
 	logsCursor int
+	logsManual bool
 	hbCursor   int
 	visualFrom int
 	clipboard  TUIClipboard
@@ -334,16 +334,11 @@ func (m tuiModel) View() string {
 		heartbeatContent = append(heartbeatContent, m.renderSelectableLine(tuiPaneHeartbeat, i, line, contentWidth))
 	}
 	input := m.renderInput(contentWidth)
-	help := fitRunes("Tab focus  v visual  j/k move  y copy  Enter run  PgUp/PgDown logs  F2 "+m.mouseLabel()+"  Ctrl+C/Ctrl+D exit"+m.copyStatusSuffix(), width)
 	lines := renderPane("Logs", m.focus == tuiPaneLogs, logsContent, width)
 	lines = append(lines, "")
 	lines = append(lines, renderPane("Heartbeat", m.focus == tuiPaneHeartbeat, heartbeatContent, width)...)
 	lines = append(lines, "")
 	lines = append(lines, renderPane("Command", m.focus == tuiPaneCommand, []string{input}, width)...)
-	for range tuiHelpGapHeight {
-		lines = append(lines, "")
-	}
-	lines = append(lines, help)
 	return strings.Join(lines, "\n")
 }
 
@@ -374,6 +369,8 @@ func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logs = nil
 		m.pending = ""
 		m.scroll = 0
+		m.logsCursor = 0
+		m.logsManual = false
 	case tea.KeyEnter:
 		m.submitInput()
 	case tea.KeyBackspace, tea.KeyCtrlH:
@@ -399,9 +396,9 @@ func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyF2:
 		return m.toggleMouse()
 	case tea.KeyPgUp:
-		m.scrollUp(m.logHeight())
+		m.moveLogsCursor(-m.logHeight())
 	case tea.KeyPgDown:
-		m.scrollDown(m.logHeight())
+		m.moveLogsCursor(m.logHeight())
 	case tea.KeyCtrlU:
 		m.input = nil
 		m.cursor = 0
@@ -425,6 +422,16 @@ func (m tuiModel) handleReadOnlyKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pending = ""
 		m.scroll = 0
 		m.logsCursor = 0
+		m.logsManual = false
+	case tea.KeyHome:
+		if m.focus == tuiPaneLogs {
+			m.jumpToFirstLogRow()
+		}
+	case tea.KeyEnd:
+		if m.focus == tuiPaneLogs {
+			m.followLatestLogRow()
+			m.logsManual = false
+		}
 	case tea.KeyUp:
 		m.moveFocusedCursor(-1)
 	case tea.KeyDown:
@@ -438,6 +445,15 @@ func (m tuiModel) handleReadOnlyKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch message.Runes[0] {
+		case 'g':
+			if m.focus == tuiPaneLogs {
+				m.jumpToFirstLogRow()
+			}
+		case 'G':
+			if m.focus == tuiPaneLogs {
+				m.followLatestLogRow()
+				m.logsManual = false
+			}
 		case 'j':
 			m.moveFocusedCursor(1)
 		case 'k':
@@ -469,6 +485,10 @@ func (m *tuiModel) focusNext(delta int) {
 	m.focus = order[index]
 	m.mode = tuiModeNormal
 	m.copyStatus = ""
+	if m.focus == tuiPaneLogs && !m.logsManual {
+		m.followLatestLogRow()
+		return
+	}
 	m.clampFocusedCursor()
 }
 
@@ -478,13 +498,7 @@ func (m *tuiModel) moveFocusedCursor(delta int) {
 	}
 	switch m.focus {
 	case tuiPaneLogs:
-		rows := m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
-		if len(rows) == 0 {
-			m.logsCursor = 0
-			return
-		}
-		m.logsCursor = clampValue(m.logsCursor+delta, 0, len(rows)-1)
-		m.ensureLogsCursorVisible(len(rows))
+		m.moveLogsCursor(delta)
 	case tuiPaneHeartbeat:
 		rows := m.heartbeatRows()
 		if len(rows) == 0 {
@@ -493,6 +507,44 @@ func (m *tuiModel) moveFocusedCursor(delta int) {
 		}
 		m.hbCursor = clampValue(m.hbCursor+delta, 0, len(rows)-1)
 	}
+}
+
+// moveLogsCursor 移动 Logs 光标，并标记用户正在查看历史位置。
+func (m *tuiModel) moveLogsCursor(delta int) {
+	rows := m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
+	if len(rows) == 0 {
+		m.logsCursor = 0
+		return
+	}
+	m.logsManual = true
+	m.logsCursor = clampValue(m.logsCursor+delta, 0, len(rows)-1)
+	m.ensureLogsCursorVisible(len(rows))
+}
+
+// followLatestLogRow 将 Logs 光标和滚动位置同步到最新可见行。
+func (m *tuiModel) followLatestLogRow() {
+	rows := m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
+	if len(rows) == 0 {
+		m.logsCursor = 0
+		m.scroll = 0
+		return
+	}
+	m.logsCursor = len(rows) - 1
+	m.scroll = 0
+	m.ensureLogsCursorVisible(len(rows))
+}
+
+// jumpToFirstLogRow 将 Logs 光标移动到第一行，并保留历史查看状态。
+func (m *tuiModel) jumpToFirstLogRow() {
+	rows := m.visibleLogRows(paneContentWidth(m.widthOrDefault()))
+	if len(rows) == 0 {
+		m.logsCursor = 0
+		m.scroll = 0
+		return
+	}
+	m.logsManual = true
+	m.logsCursor = 0
+	m.ensureLogsCursorVisible(len(rows))
 }
 
 func (m *tuiModel) clampFocusedCursor() {
@@ -703,8 +755,8 @@ func (m *tuiModel) appendOutput(output string) {
 		if !ok {
 			return
 		}
-		m.routeLogLine(line)
 		m.pending = rest
+		m.routeLogLine(line)
 	}
 }
 
@@ -827,14 +879,21 @@ func (m *tuiModel) setHeartbeatRaw(direction string, raw string) {
 }
 
 func (m *tuiModel) appendLogLine(line string) {
+	shouldFollow := m.focus != tuiPaneLogs || !m.logsManual
 	m.logs = append(m.logs, line)
 	if len(m.logs) > maxTUILogLines {
 		m.logs = m.logs[len(m.logs)-maxTUILogLines:]
+	}
+	if shouldFollow {
+		m.followLatestLogRow()
+		m.logsManual = false
+		return
 	}
 	if m.scroll > 0 {
 		m.scroll++
 		m.clampScroll()
 	}
+	m.clampFocusedCursor()
 }
 
 func (m tuiModel) visibleLogRows(width int) []string {
@@ -853,6 +912,7 @@ func (m tuiModel) renderInput(width int) string {
 	value = append(value, '█')
 	value = append(value, m.input[m.cursor:]...)
 	line := fitRunes(m.prompt+string(value), width)
+	line = appendInlineInputHelp(line, m.inputHelpText(), width)
 	return colorTUIInputPrompt(line, m.prompt)
 }
 
@@ -861,7 +921,7 @@ func (m tuiModel) logHeight() int {
 	if height < tuiMinimumHeight() {
 		height = defaultTUIHeight
 	}
-	return maxValue(1, height-2-2*tuiSectionGapHeight-m.heartbeatHeight()-3-tuiHelpGapHeight-1)
+	return maxValue(1, height-2-2*tuiSectionGapHeight-m.heartbeatHeight()-3)
 }
 
 func (m tuiModel) heartbeatHeight() int {
@@ -929,7 +989,7 @@ func paneContentWidth(width int) int {
 }
 
 func tuiMinimumHeight() int {
-	return 2 + 2*tuiSectionGapHeight + (tuiHeartbeatHeight + 1) + 3 + tuiHelpGapHeight + 1
+	return 2 + 2*tuiSectionGapHeight + (tuiHeartbeatHeight + 1) + 3 + 1
 }
 
 func orderedRange(a int, b int) (int, int) {
@@ -957,6 +1017,41 @@ func logVisibleRange(rowCount int, height int, scroll int) (int, int) {
 
 func (m tuiModel) copyStatusSuffix() string {
 	return m.copyStatus
+}
+
+// inputHelpText 返回显示在输入框内的快捷键提示文本。
+func (m tuiModel) inputHelpText() string {
+	help := "Tab focus  v visual  j/k move  g/Home G/End edge  y copy  Enter run  PgUp/PgDown logs  F2 " + m.mouseLabel() + "  Ctrl+C/Ctrl+D exit"
+	if m.copyStatus == "" {
+		return help
+	}
+	return strings.TrimSpace(m.copyStatus) + "  " + help
+}
+
+// appendInlineInputHelp 将快捷键提示追加到输入行的剩余空间中。
+func appendInlineInputHelp(line string, help string, width int) string {
+	available := width - runeLenWithoutANSI(line)
+	if available <= 2 {
+		return line
+	}
+	helpWidth := available - 2
+	help = fitRunesFromStart(help, helpWidth)
+	return line + "  " + tuiHelpColor + help + tuiColorReset
+}
+
+// fitRunesFromStart 保留字符串开头，并在空间不足时截断末尾。
+func fitRunesFromStart(value string, width int) string {
+	if width <= 0 {
+		width = defaultTUIWidth
+	}
+	runes := []rune(value)
+	if len(runes) <= width {
+		return value
+	}
+	if width <= 1 {
+		return string(runes[:width])
+	}
+	return string(runes[:width-1]) + "…"
 }
 
 func titleDivider(title string, width int) string {

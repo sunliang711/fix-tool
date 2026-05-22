@@ -45,27 +45,31 @@ func TestTUIModelSubmitsInputAndKeepsPromptAtBottom(t *testing.T) {
 	}
 }
 
-func TestTUIModelKeepsTwoBlankLinesBeforeHelp(t *testing.T) {
+func TestTUIModelRendersHelpInsideInputPane(t *testing.T) {
 	reader := NewTUILineReader()
 	output := NewTUIOutputWriter()
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
-	model.width = 120
+	model.width = 160
 	model.height = 14
 
 	lines := strings.Split(stripTUIANSICodes(model.View()), "\n")
+	helpLines := 0
 	for index, line := range lines {
+		if strings.Contains(line, "Tab focus") {
+			helpLines++
+		}
 		if !strings.Contains(line, "fix-tool> █") {
 			continue
 		}
-		if index+4 >= len(lines) {
-			t.Fatalf("view lines = %q, want help after input gap", lines)
+		if !strings.Contains(line, "Tab focus") || !strings.Contains(line, "Enter run") {
+			t.Fatalf("input line = %q, want inline help", line)
 		}
-		if lines[index+2] != "" || lines[index+3] != "" {
-			t.Fatalf("view lines = %q, want two blank lines before help", lines)
+		if index+1 >= len(lines) || !strings.Contains(lines[index+1], "└") {
+			t.Fatalf("view lines = %q, want help inside input pane", lines)
 		}
-		if !strings.Contains(lines[index+4], "Enter run") {
-			t.Fatalf("view lines = %q, want help after two blank lines", lines)
+		if helpLines != 1 {
+			t.Fatalf("view lines = %q, want one inline help line", lines)
 		}
 		return
 	}
@@ -176,7 +180,7 @@ func TestTUIModelAppendsAndScrollsOutput(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 17
+	model.height = 14
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\n"))
 	model = next.(tuiModel)
@@ -193,6 +197,170 @@ func TestTUIModelAppendsAndScrollsOutput(t *testing.T) {
 	view = stripTUIANSICodes(model.View())
 	if !strings.Contains(view, "one") {
 		t.Fatalf("view = %q, want scrolled log line", view)
+	}
+}
+
+func TestTUIModelFocusesLatestLogLineByDefault(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 80
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg("alpha\nbeta\ngamma\n"))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 2 {
+		t.Fatalf("logsCursor = %d, want latest line index 2", model.logsCursor)
+	}
+	if model.scroll != 0 {
+		t.Fatalf("scroll = %d, want bottom scroll", model.scroll)
+	}
+	if model.logsManual {
+		t.Fatalf("logsManual = true, want default latest tracking")
+	}
+	view := model.View()
+	if !strings.Contains(view, tuiSelectionColor+"gamma") {
+		t.Fatalf("view = %q, want latest log line selected", view)
+	}
+}
+
+func TestTUIModelKeepsManualLogCursorWhenRefocusing(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 80
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg("alpha\nbeta\ngamma\n"))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 1 {
+		t.Fatalf("logsCursor = %d, want preserved line index 1", model.logsCursor)
+	}
+	if !model.logsManual {
+		t.Fatalf("logsManual = false, want manual history state")
+	}
+	view := model.View()
+	if !strings.Contains(view, tuiSelectionColor+"beta") {
+		t.Fatalf("view = %q, want manual log line selected", view)
+	}
+}
+
+func TestTUIModelNewLogsFollowUnlessFocusedOnHistory(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 80
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg("alpha\nbeta\ngamma\n"))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	model = next.(tuiModel)
+	next, _ = model.Update(tuiOutputMsg("delta\n"))
+	model = next.(tuiModel)
+
+	if model.logsCursor != 1 {
+		t.Fatalf("logsCursor = %d, want focused history line index 1", model.logsCursor)
+	}
+	if !strings.Contains(model.View(), tuiSelectionColor+"beta") {
+		t.Fatalf("view = %q, want focused history line selected", model.View())
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tuiOutputMsg("epsilon\n"))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 4 {
+		t.Fatalf("logsCursor = %d, want latest line index 4", model.logsCursor)
+	}
+	if model.logsManual {
+		t.Fatalf("logsManual = true, want latest tracking after background output")
+	}
+	if !strings.Contains(model.View(), tuiSelectionColor+"epsilon") {
+		t.Fatalf("view = %q, want newest log line selected", model.View())
+	}
+}
+
+func TestTUIModelLogEdgeShortcuts(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 80
+	model.height = 18
+
+	next, _ := model.Update(tuiOutputMsg("alpha\nbeta\ngamma\n"))
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 0 {
+		t.Fatalf("logsCursor = %d, want first line index 0", model.logsCursor)
+	}
+	if !model.logsManual {
+		t.Fatalf("logsManual = false, want history state after g")
+	}
+	if !strings.Contains(model.View(), tuiSelectionColor+"alpha") {
+		t.Fatalf("view = %q, want first log line selected", model.View())
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 2 {
+		t.Fatalf("logsCursor = %d, want latest line index 2", model.logsCursor)
+	}
+	if model.logsManual {
+		t.Fatalf("logsManual = true, want latest tracking after G")
+	}
+	if !strings.Contains(model.View(), tuiSelectionColor+"gamma") {
+		t.Fatalf("view = %q, want latest log line selected", model.View())
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyHome})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 0 {
+		t.Fatalf("logsCursor = %d, want first line index 0 after Home", model.logsCursor)
+	}
+	if !model.logsManual {
+		t.Fatalf("logsManual = false, want history state after Home")
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	model = next.(tuiModel)
+
+	if model.logsCursor != 2 {
+		t.Fatalf("logsCursor = %d, want latest line index 2 after End", model.logsCursor)
+	}
+	if model.logsManual {
+		t.Fatalf("logsManual = true, want latest tracking after End")
 	}
 }
 
@@ -356,7 +524,7 @@ func TestTUIModelStartsWithMouseWheelDisabled(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 18
+	model.height = 15
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\nfive\n"))
 	model = next.(tuiModel)
@@ -378,7 +546,7 @@ func TestTUIModelMouseWheelScrollsOutput(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 18
+	model.height = 15
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\nfive\n"))
 	model = next.(tuiModel)
@@ -429,6 +597,8 @@ func TestTUIModelCopiesVisualSelectionFromLogs(t *testing.T) {
 	next, _ := model.Update(tuiOutputMsg("alpha\nbeta\ngamma\n"))
 	model = next.(tuiModel)
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	model = next.(tuiModel)
 	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
 	model = next.(tuiModel)
