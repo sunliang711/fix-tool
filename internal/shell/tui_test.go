@@ -33,15 +33,15 @@ func TestTUIModelSubmitsInputAndKeepsPromptAtBottom(t *testing.T) {
 		t.Fatalf("ReadLine() = %q, %v, want help, true", line, ok)
 	}
 	rawView := model.View()
-	if !strings.Contains(rawView, tuiPromptColor+"fix-tool> "+tuiColorReset+"█") {
-		t.Fatalf("view = %q, want colored input prompt", rawView)
+	if !strings.Contains(rawView, tuiPromptColor+"fix-tool> "+tuiColorReset+"|") {
+		t.Fatalf("view = %q, want colored input prompt cursor", rawView)
 	}
 	view := stripTUIANSICodes(rawView)
 	if !strings.Contains(view, "fix-tool> help") {
 		t.Fatalf("view = %q, want submitted command in logs", view)
 	}
-	if !strings.Contains(view, "fix-tool> █") {
-		t.Fatalf("view = %q, want fixed prompt input", view)
+	if !strings.Contains(view, "fix-tool> |") {
+		t.Fatalf("view = %q, want fixed prompt input cursor", view)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestTUIModelRendersHelpInsideInputPane(t *testing.T) {
 		if strings.Contains(line, "Tab focus") {
 			helpLines++
 		}
-		if !strings.Contains(line, "fix-tool> █") {
+		if !strings.Contains(line, "fix-tool> |") {
 			continue
 		}
 		if !strings.Contains(line, "Tab focus") || !strings.Contains(line, "Enter run") {
@@ -94,6 +94,45 @@ func TestTUIModelRendersSectionTitlesWithBorders(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view = %q, want border %q", view, want)
 		}
+	}
+}
+
+func TestTUIModelRendersStoppedStreamStatus(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 100
+	model.height = 14
+
+	view := stripTUIANSICodes(model.View())
+	want := `Stream: stopped sent=0 ok=0 failed=0 last_error=""`
+	if !strings.Contains(view, want) {
+		t.Fatalf("view = %q, want %q", view, want)
+	}
+}
+
+func TestTUIModelRendersRunningStreamStatus(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 120
+	model.height = 15
+
+	next, _ := model.Update(tuiStreamStatusMsg(orderStreamStatus{
+		Running:   true,
+		Sent:      42,
+		Succeeded: 42,
+		Failed:    0,
+		LastError: "",
+	}))
+	model = next.(tuiModel)
+
+	view := stripTUIANSICodes(model.View())
+	want := `Stream: running sent=42 ok=42 failed=0 last_error=""`
+	if !strings.Contains(view, want) {
+		t.Fatalf("view = %q, want %q", view, want)
 	}
 }
 
@@ -135,6 +174,292 @@ func TestTUIModelAcceptsSpacesInInput(t *testing.T) {
 	}
 	if !ok || line != "save status" {
 		t.Fatalf("ReadLine() = %q, %v, want save status, true", line, ok)
+	}
+}
+
+func TestTUIModelCommandEscSwitchesToNormalWithoutQuit(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 80
+	model.height = 14
+
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Fatalf("Esc command = tea.QuitMsg, want no quit")
+		}
+	}
+	if model.commandMode != tuiCommandModeNormal {
+		t.Fatalf("commandMode = %v, want normal", model.commandMode)
+	}
+	if !strings.Contains(stripTUIANSICodes(model.View()), "-- NORMAL --") {
+		t.Fatalf("view = %q, want normal mode label", stripTUIANSICodes(model.View()))
+	}
+}
+
+func TestTUIModelCommandNormalIBackToInsert(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	model = next.(tuiModel)
+
+	if model.commandMode != tuiCommandModeInsert {
+		t.Fatalf("commandMode = %v, want insert", model.commandMode)
+	}
+}
+
+func TestTUIModelCommandNormalMovesCursor(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	for _, value := range []rune("alpha beta gamma") {
+		next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{value}})
+		model = next.(tuiModel)
+	}
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	if model.cursor != 15 {
+		t.Fatalf("cursor = %d, want 15 after Esc", model.cursor)
+	}
+
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	model = next.(tuiModel)
+	if model.cursor != 14 {
+		t.Fatalf("cursor = %d, want 14 after h", model.cursor)
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	model = next.(tuiModel)
+	if model.cursor != 15 {
+		t.Fatalf("cursor = %d, want 15 after l", model.cursor)
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = next.(tuiModel)
+	if model.cursor != 11 {
+		t.Fatalf("cursor = %d, want 11 after b", model.cursor)
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = next.(tuiModel)
+	if model.cursor != 6 {
+		t.Fatalf("cursor = %d, want 6 after second b", model.cursor)
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = next.(tuiModel)
+	if model.cursor != 11 {
+		t.Fatalf("cursor = %d, want 11 after w", model.cursor)
+	}
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	model = next.(tuiModel)
+	if model.cursor != 15 {
+		t.Fatalf("cursor = %d, want 15 after e", model.cursor)
+	}
+}
+
+func TestTUIModelCommandNormalCursorDoesNotInsertExtraCell(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+	model.width = 120
+	model.height = 14
+
+	for _, value := range []rune("order stream start") {
+		next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{value}})
+		model = next.(tuiModel)
+	}
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	for i := 0; i < 10; i++ {
+		next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+		model = next.(tuiModel)
+	}
+
+	view := stripTUIANSICodes(model.View())
+	if strings.Contains(view, "█") {
+		t.Fatalf("view = %q, want no inserted block cursor in normal mode", view)
+	}
+	if !strings.Contains(view, "fix-tool> order stream start") {
+		t.Fatalf("view = %q, want original input without shifted character", view)
+	}
+}
+
+func TestTUIModelCommandNormalNextWordFromSeparator(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	for _, value := range []rune("alpha beta gamma") {
+		next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{value}})
+		model = next.(tuiModel)
+	}
+	model.cursor = 5
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = next.(tuiModel)
+
+	if model.cursor != 6 {
+		t.Fatalf("cursor = %d, want 6 after w from separator", model.cursor)
+	}
+}
+
+func TestTUIModelCommandNormalEmptyInputKeysAreSafe(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	for _, key := range []rune{'h', 'l', 'w', 'b', 'e', 'd'} {
+		next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		model = next.(tuiModel)
+	}
+
+	if len(model.input) != 0 || model.cursor != 0 {
+		t.Fatalf("input=%q cursor=%d, want empty input cursor 0", string(model.input), model.cursor)
+	}
+}
+
+func TestTUIModelCommandNormalDeletesCursorChar(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	for _, value := range []rune("abcd") {
+		next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{value}})
+		model = next.(tuiModel)
+	}
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = next.(tuiModel)
+
+	if got := string(model.input); got != "abd" {
+		t.Fatalf("input = %q, want abd", got)
+	}
+	if model.cursor != 2 {
+		t.Fatalf("cursor = %d, want 2", model.cursor)
+	}
+}
+
+func TestTUIModelCommandNormalEnterSubmits(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	for _, value := range []rune("help") {
+		next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{value}})
+		model = next.(tuiModel)
+	}
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = next.(tuiModel)
+
+	line, ok, err := reader.ReadLine(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ReadLine() error = %v", err)
+	}
+	if !ok || line != "help" {
+		t.Fatalf("ReadLine() = %q, %v, want help, true", line, ok)
+	}
+}
+
+func TestTUIModelCommandCtrlCStillQuits(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	if cmd == nil {
+		t.Fatalf("Ctrl+C command = nil, want quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("Ctrl+C command = %T, want tea.QuitMsg", cmd())
+	}
+}
+
+func TestTUIModelCommandNormalCtrlDClosesInput(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	model = next.(tuiModel)
+
+	line, ok, err := reader.ReadLine(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ReadLine() error = %v", err)
+	}
+	if ok || line != "" {
+		t.Fatalf("ReadLine() = %q, %v, want empty line, false", line, ok)
+	}
+}
+
+func TestTUIModelReadOnlyEscStillQuits(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	if cmd == nil {
+		t.Fatalf("Esc command = nil, want quit outside command pane")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("Esc command = %T, want tea.QuitMsg", cmd())
+	}
+}
+
+func TestTUIModelReadOnlyVisualEscExitsVisualOnly(t *testing.T) {
+	reader := NewTUILineReader()
+	output := NewTUIOutputWriter()
+	done := newTUIRunnerState()
+	model := newTUIModel("fix-tool> ", reader, output, done)
+
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	model = next.(tuiModel)
+	next, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
+	model = next.(tuiModel)
+	if model.mode != tuiModeVisual {
+		t.Fatalf("mode = %v, want visual", model.mode)
+	}
+	next, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	model = next.(tuiModel)
+
+	if cmd != nil {
+		if _, ok := cmd().(tea.QuitMsg); ok {
+			t.Fatalf("Esc command = tea.QuitMsg, want no quit from visual")
+		}
+	}
+	if model.mode != tuiModeNormal {
+		t.Fatalf("mode = %v, want normal", model.mode)
 	}
 }
 
@@ -180,7 +505,7 @@ func TestTUIModelAppendsAndScrollsOutput(t *testing.T) {
 	done := newTUIRunnerState()
 	model := newTUIModel("fix-tool> ", reader, output, done)
 	model.width = 120
-	model.height = 14
+	model.height = 15
 
 	next, _ := model.Update(tuiOutputMsg("one\ntwo\nthree\nfour\n"))
 	model = next.(tuiModel)

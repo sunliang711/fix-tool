@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -19,9 +20,10 @@ const (
 	defaultTUIHeight    = 24
 	tuiLogsTitleHeight  = 1
 	tuiSectionGapHeight = 1
-	tuiHeartbeatHeight  = 3
+	tuiHeartbeatHeight  = 4
 	maxTUILogLines      = 10000
 	tuiShutdownTimeout  = 5 * time.Second
+	tuiStreamRefresh    = time.Second
 	tuiOutputBufferSize = 4096
 	tuiMouseScrollRows  = 3
 	tuiPromptColor      = "\x1b[1;36m"
@@ -145,7 +147,7 @@ func RunTUI(ctx context.Context, options TUIOptions) error {
 		runnerState.finish(options.Runner.Run(ctx))
 	}()
 
-	model := newTUIModel(options.Prompt, options.LineReader, options.Output, runnerState)
+	model := newTUIModel(options.Prompt, options.LineReader, options.Output, runnerState, options.Runner.streamStatus)
 	if options.Clipboard != nil {
 		model.clipboard = options.Clipboard
 	}
@@ -173,6 +175,10 @@ func RunTUI(ctx context.Context, options TUIOptions) error {
 
 type tuiOutputMsg string
 
+type tuiStreamStatusMsg orderStreamStatus
+
+type tuiStreamStatusFunc func() orderStreamStatus
+
 type tuiDoneMsg struct {
 	err error
 }
@@ -196,6 +202,13 @@ type tuiMode int
 const (
 	tuiModeNormal tuiMode = iota
 	tuiModeVisual
+)
+
+type tuiCommandMode int
+
+const (
+	tuiCommandModeInsert tuiCommandMode = iota
+	tuiCommandModeNormal
 )
 
 type tuiRunnerState struct {
@@ -222,39 +235,42 @@ func (s *tuiRunnerState) err() error {
 }
 
 type tuiModel struct {
-	prompt     string
-	reader     *TUILineReader
-	output     *TUIOutputWriter
-	done       *tuiRunnerState
-	width      int
-	height     int
-	logs       []string
-	pending    string
-	input      []rune
-	cursor     int
-	history    []string
-	historyPos int
-	scroll     int
-	mouse      bool
-	focus      tuiPane
-	mode       tuiMode
-	logsCursor int
-	logsManual bool
-	hbCursor   int
-	visualFrom int
-	clipboard  TUIClipboard
-	copyStatus string
-	heartbeat  tuiHeartbeatState
-	hbBlock    string
-	hbDir      string
-	fixBlock   []string
-	fixDir     string
-	fixHB      bool
-	fixDecided bool
+	prompt      string
+	reader      *TUILineReader
+	output      *TUIOutputWriter
+	done        *tuiRunnerState
+	width       int
+	height      int
+	logs        []string
+	pending     string
+	input       []rune
+	cursor      int
+	history     []string
+	historyPos  int
+	scroll      int
+	mouse       bool
+	focus       tuiPane
+	mode        tuiMode
+	commandMode tuiCommandMode
+	logsCursor  int
+	logsManual  bool
+	hbCursor    int
+	visualFrom  int
+	clipboard   TUIClipboard
+	copyStatus  string
+	heartbeat   tuiHeartbeatState
+	stream      orderStreamStatus
+	streamFunc  tuiStreamStatusFunc
+	hbBlock     string
+	hbDir       string
+	fixBlock    []string
+	fixDir      string
+	fixHB       bool
+	fixDecided  bool
 }
 
-func newTUIModel(prompt string, reader *TUILineReader, output *TUIOutputWriter, done *tuiRunnerState) tuiModel {
-	return tuiModel{
+func newTUIModel(prompt string, reader *TUILineReader, output *TUIOutputWriter, done *tuiRunnerState, streamFunc ...tuiStreamStatusFunc) tuiModel {
+	model := tuiModel{
 		prompt:     prompt,
 		reader:     reader,
 		output:     output,
@@ -265,10 +281,15 @@ func newTUIModel(prompt string, reader *TUILineReader, output *TUIOutputWriter, 
 		clipboard:  systemTUIClipboard{},
 		historyPos: -1,
 	}
+	if len(streamFunc) > 0 && streamFunc[0] != nil {
+		model.streamFunc = streamFunc[0]
+		model.stream = streamFunc[0]()
+	}
+	return model
 }
 
 func (m tuiModel) Init() tea.Cmd {
-	return tea.Batch(waitTUIOutput(m.output), waitTUIDone(m.done))
+	return tea.Batch(waitTUIOutput(m.output), waitTUIDone(m.done), waitTUIStreamStatus(m.streamFunc))
 }
 
 func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -279,6 +300,9 @@ func (m tuiModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiOutputMsg:
 		m.appendOutput(string(msg))
 		return m, waitTUIOutput(m.output)
+	case tuiStreamStatusMsg:
+		m.stream = orderStreamStatus(msg)
+		return m, waitTUIStreamStatus(m.streamFunc)
 	case tuiDoneMsg:
 		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
 			m.appendLogLine("Error: " + msg.err.Error())
@@ -347,6 +371,10 @@ func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlC:
 		return m, tea.Quit
 	case tea.KeyEsc:
+		if m.focus == tuiPaneCommand {
+			m.enterCommandNormalMode()
+			return m, nil
+		}
 		if m.mode == tuiModeVisual {
 			m.mode = tuiModeNormal
 			return m, nil
@@ -362,6 +390,13 @@ func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus != tuiPaneCommand {
 		return m.handleReadOnlyKey(message)
 	}
+	if m.commandMode == tuiCommandModeNormal {
+		return m.handleCommandNormalKey(message)
+	}
+	return m.handleCommandInsertKey(message)
+}
+
+func (m tuiModel) handleCommandInsertKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch message.Type {
 	case tea.KeyCtrlD:
 		_ = m.reader.Close()
@@ -411,6 +446,48 @@ func (m tuiModel) handleKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.insertRunes(message.Runes)
 	case tea.KeyRunes:
 		m.insertRunes(message.Runes)
+	}
+	return m, nil
+}
+
+func (m tuiModel) handleCommandNormalKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch message.Type {
+	case tea.KeyCtrlD:
+		_ = m.reader.Close()
+	case tea.KeyCtrlL:
+		m.logs = nil
+		m.pending = ""
+		m.scroll = 0
+		m.logsCursor = 0
+		m.logsManual = false
+	case tea.KeyEnter:
+		m.submitInput()
+	case tea.KeyF2:
+		return m.toggleMouse()
+	case tea.KeyPgUp:
+		m.moveLogsCursor(-m.logHeight())
+	case tea.KeyPgDown:
+		m.moveLogsCursor(m.logHeight())
+	case tea.KeyRunes:
+		if len(message.Runes) != 1 {
+			return m, nil
+		}
+		switch message.Runes[0] {
+		case 'i':
+			m.commandMode = tuiCommandModeInsert
+		case 'h':
+			m.moveCommandCursorLeft()
+		case 'l':
+			m.moveCommandCursorRight()
+		case 'w':
+			m.moveCommandCursorNextWord()
+		case 'b':
+			m.moveCommandCursorPreviousWord()
+		case 'e':
+			m.moveCommandCursorWordEnd()
+		case 'd':
+			m.deleteCommandCursorChar()
+		}
 	}
 	return m, nil
 }
@@ -490,6 +567,13 @@ func (m *tuiModel) focusNext(delta int) {
 		return
 	}
 	m.clampFocusedCursor()
+}
+
+func (m *tuiModel) enterCommandNormalMode() {
+	m.commandMode = tuiCommandModeNormal
+	if len(m.input) > 0 && m.cursor == len(m.input) {
+		m.cursor--
+	}
 }
 
 func (m *tuiModel) moveFocusedCursor(delta int) {
@@ -720,6 +804,106 @@ func (m *tuiModel) delete() {
 	m.historyPos = -1
 }
 
+func (m *tuiModel) deleteCommandCursorChar() {
+	if len(m.input) == 0 {
+		return
+	}
+	if m.cursor >= len(m.input) {
+		m.cursor = len(m.input) - 1
+	}
+	m.delete()
+	if len(m.input) > 0 && m.cursor >= len(m.input) {
+		m.cursor = len(m.input) - 1
+	}
+}
+
+func (m *tuiModel) moveCommandCursorLeft() {
+	if m.cursor > 0 {
+		m.cursor--
+	}
+}
+
+func (m *tuiModel) moveCommandCursorRight() {
+	if m.cursor < len(m.input)-1 {
+		m.cursor++
+	}
+}
+
+func (m *tuiModel) moveCommandCursorNextWord() {
+	if len(m.input) == 0 {
+		return
+	}
+	index := m.cursor
+	if index >= len(m.input) {
+		index = len(m.input) - 1
+	}
+	if isTUIWordRune(m.input[index]) {
+		index++
+		for index < len(m.input) && isTUIWordRune(m.input[index]) {
+			index++
+		}
+	}
+	for index < len(m.input) && !isTUIWordRune(m.input[index]) {
+		index++
+	}
+	if index < len(m.input) {
+		m.cursor = index
+		return
+	}
+	m.cursor = len(m.input) - 1
+}
+
+func (m *tuiModel) moveCommandCursorPreviousWord() {
+	if len(m.input) == 0 {
+		return
+	}
+	index := m.cursor - 1
+	for index > 0 && !isTUIWordRune(m.input[index]) {
+		index--
+	}
+	for index > 0 && isTUIWordRune(m.input[index-1]) {
+		index--
+	}
+	if index < 0 {
+		index = 0
+	}
+	m.cursor = index
+}
+
+func (m *tuiModel) moveCommandCursorWordEnd() {
+	if len(m.input) == 0 {
+		return
+	}
+	index := m.cursor
+	if index >= len(m.input) {
+		index = len(m.input) - 1
+	}
+	if isTUIWordRune(m.input[index]) && index+1 < len(m.input) && isTUIWordRune(m.input[index+1]) {
+		for index+1 < len(m.input) && isTUIWordRune(m.input[index+1]) {
+			index++
+		}
+		m.cursor = index
+		return
+	}
+	if isTUIWordRune(m.input[index]) {
+		index++
+	}
+	for index < len(m.input) && !isTUIWordRune(m.input[index]) {
+		index++
+	}
+	for index+1 < len(m.input) && isTUIWordRune(m.input[index+1]) {
+		index++
+	}
+	if index >= len(m.input) {
+		index = len(m.input) - 1
+	}
+	m.cursor = index
+}
+
+func isTUIWordRune(value rune) bool {
+	return unicode.IsLetter(value) || unicode.IsDigit(value) || value == '_'
+}
+
 func (m *tuiModel) historyUp() {
 	if len(m.history) == 0 {
 		return
@@ -908,12 +1092,28 @@ func (m tuiModel) visibleLogRows(width int) []string {
 }
 
 func (m tuiModel) renderInput(width int) string {
-	value := append([]rune(nil), m.input[:m.cursor]...)
-	value = append(value, '█')
-	value = append(value, m.input[m.cursor:]...)
-	line := fitRunes(m.prompt+string(value), width)
+	line := fitRunes(m.prompt+m.renderCommandInputValue(), width)
 	line = appendInlineInputHelp(line, m.inputHelpText(), width)
 	return colorTUIInputPrompt(line, m.prompt)
+}
+
+func (m tuiModel) renderCommandInputValue() string {
+	if m.commandMode != tuiCommandModeNormal {
+		value := append([]rune(nil), m.input[:m.cursor]...)
+		value = append(value, '|')
+		value = append(value, m.input[m.cursor:]...)
+		return string(value)
+	}
+	if len(m.input) == 0 {
+		return "█"
+	}
+	cursor := clampValue(m.cursor, 0, len(m.input)-1)
+	value := append([]rune(nil), m.input[:cursor]...)
+	value = append(value, []rune(tuiSelectionColor)...)
+	value = append(value, m.input[cursor])
+	value = append(value, []rune(tuiColorReset)...)
+	value = append(value, m.input[cursor+1:]...)
+	return string(value)
 }
 
 func (m tuiModel) logHeight() int {
@@ -932,7 +1132,17 @@ func (m tuiModel) heartbeatRows() []string {
 	return []string{
 		"OUT raw_message=" + heartbeatValue(m.heartbeat.outbound),
 		"IN  raw_message=" + heartbeatValue(m.heartbeat.inbound, m.heartbeat.unknown),
+		formatTUIStreamStatus(m.stream),
 	}
+}
+
+// formatTUIStreamStatus 将 stream 状态快照格式化为 TUI 常驻状态行。
+func formatTUIStreamStatus(status orderStreamStatus) string {
+	state := "stopped"
+	if status.Running {
+		state = "running"
+	}
+	return fmt.Sprintf("Stream: %s sent=%d ok=%d failed=%d last_error=%q", state, status.Sent, status.Succeeded, status.Failed, status.LastError)
 }
 
 func (m tuiModel) renderSelectableLine(pane tuiPane, index int, line string, width int) string {
@@ -1021,11 +1231,18 @@ func (m tuiModel) copyStatusSuffix() string {
 
 // inputHelpText 返回显示在输入框内的快捷键提示文本。
 func (m tuiModel) inputHelpText() string {
-	help := "Tab focus  v visual  j/k move  g/Home G/End edge  y copy  Enter run  PgUp/PgDown logs  F2 " + m.mouseLabel() + "  Ctrl+C/Ctrl+D exit"
+	help := m.commandModeLabel() + "  Tab focus  Enter run  F2 " + m.mouseLabel() + "  v visual  j/k move  g/Home G/End edge  y copy  PgUp/PgDown logs  Ctrl+C/Ctrl+D exit"
 	if m.copyStatus == "" {
 		return help
 	}
 	return strings.TrimSpace(m.copyStatus) + "  " + help
+}
+
+func (m tuiModel) commandModeLabel() string {
+	if m.commandMode == tuiCommandModeNormal {
+		return "-- NORMAL --"
+	}
+	return "-- INSERT --"
 }
 
 // appendInlineInputHelp 将快捷键提示追加到输入行的剩余空间中。
@@ -1293,6 +1510,16 @@ func waitTUIDone(done *tuiRunnerState) tea.Cmd {
 		<-done.done
 		return tuiDoneMsg{err: done.err()}
 	}
+}
+
+// waitTUIStreamStatus 定时读取 stream 状态快照，驱动 TUI 自动刷新。
+func waitTUIStreamStatus(statusFunc tuiStreamStatusFunc) tea.Cmd {
+	if statusFunc == nil {
+		return nil
+	}
+	return tea.Tick(tuiStreamRefresh, func(time.Time) tea.Msg {
+		return tuiStreamStatusMsg(statusFunc())
+	})
 }
 
 func wrapRunes(value string, width int) []string {

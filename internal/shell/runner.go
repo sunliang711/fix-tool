@@ -596,6 +596,13 @@ func (r *Runner) stopStream() {
 	r.stream.StopIfRunning()
 }
 
+func (r *Runner) streamStatus() orderStreamStatus {
+	if r == nil || r.stream == nil {
+		return orderStreamStatus{}
+	}
+	return r.stream.Status()
+}
+
 func (r *Runner) closeTranscript() error {
 	if r.transcript == nil {
 		return nil

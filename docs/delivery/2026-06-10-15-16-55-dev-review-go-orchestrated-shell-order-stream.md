@@ -29,6 +29,8 @@
 - 新增 `orderStream` 管理后台 goroutine，同一 shell 实例只允许一个 stream 运行。
 - shell 退出和 `logout` 时自动停止 stream，避免后台 goroutine 泄漏。
 - 前台 admin/order 命令和后台 stream 共享互斥锁，避免多个命令并发消费同一个 FIX event stream。
+- TUI Heartbeat 区增加常驻 Stream 状态行，通过 1s tick 自动刷新 `running/stopped`、sent、ok、failed 和 last_error。
+- TUI Command 输入框增加轻量 Vim 模式，默认 insert，`Esc` 进入 normal，normal 支持 `i/h/l/w/b/e/d/Enter`。
 
 ## 文件与配置变更
 
@@ -38,6 +40,8 @@
 - 修改 `internal/shell/parser_test.go`
 - 修改 `internal/shell/runner_test.go`
 - 新增 `internal/shell/stream_test.go`
+- 修改 `internal/shell/tui.go`
+- 修改 `internal/shell/tui_test.go`
 
 无配置项和依赖变更。
 
@@ -60,6 +64,15 @@
 - 问题：启动前校验需要和 help 的覆盖规则一致。
   - 处理：允许 `--symbol-seq` 替代 `--symbol`、`--qty-seq` 替代 `--qty`、`--price-seq` 替代 limit 单 `--price`；`--side` 仍必填。
   - 验证：补充 seq 替代必填项、空 start、缺 side、market 单无 price 的测试。
+- 问题：TUI 中缺少 stream 是否运行的常驻提示。
+  - 处理：在 Heartbeat 面板增加 `Stream:` 状态行，并通过 `Runner.streamStatus()` 安全读取状态快照。
+  - 验证：补充 stopped/running 状态渲染测试，并通过 `go test -race ./internal/shell`。
+- 问题：TUI Command 输入框缺少简单 Vim 操作模式，且 `Esc` 会直接退出程序。
+  - 处理：新增独立 Command 输入模式；Command pane 中 `Esc` 切 normal，不退出；`Ctrl+C` 仍退出。
+  - 验证：补充模式切换、光标移动、删除、提交、退出键和非 Command pane `Esc` 回归测试。
+- 问题：`w` 在分隔符位置可能跳过紧邻单词。
+  - 处理：修正 `moveCommandCursorNextWord`，当前为分隔符时从当前分隔符开始寻找下一个 word。
+  - 验证：补充 `TestTUIModelCommandNormalNextWordFromSeparator`。
 
 ## 风险与后续建议
 
