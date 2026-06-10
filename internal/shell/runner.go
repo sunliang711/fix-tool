@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"fix-tool/internal/admin"
@@ -72,6 +73,8 @@ type Runner struct {
 	format      render.Format
 	prompt      string
 	stopTimeout time.Duration
+	stream      *orderStream
+	orderMu     sync.Mutex
 }
 
 type scanResult struct {
@@ -104,7 +107,7 @@ func NewRunner(options Options) *Runner {
 	if stopTimeout <= 0 {
 		stopTimeout = defaultStopTimeout
 	}
-	return &Runner{
+	runner := &Runner{
 		in:          in,
 		out:         out,
 		errOut:      errOut,
@@ -119,10 +122,13 @@ func NewRunner(options Options) *Runner {
 		prompt:      options.Prompt,
 		stopTimeout: stopTimeout,
 	}
+	runner.stream = newOrderStream(runner.order, runner.recordOrderResult, &runner.orderMu)
+	return runner
 }
 
 func (r *Runner) Run(ctx context.Context) (err error) {
 	defer func() {
+		r.stopStream()
 		if stopErr := r.stopSession(); stopErr != nil && err == nil {
 			err = stopErr
 		}
@@ -264,6 +270,38 @@ const shellHelpText = `Commands:
       --time-in-force <tif>
       --tag <tag=value>
 
+  order stream start
+                   Send NewOrderSingle repeatedly
+    required:
+      --side <buy|sell>
+      --symbol <s> or --symbol-seq <a,b>
+      --qty <q> or --qty-seq <a,b>
+      limit orders need --price <p> or --price-seq <a,b>
+    optional order flags:
+      --ord-type <type>
+      --time-in-force <tif>
+      --tag <tag=value>
+    stream controls:
+      --interval <duration>           default 1s
+      --count <n>                     default 0, until stop
+      --cl-ord-id-prefix <prefix>     default STRM
+      --cl-ord-id-mode <sequence|random>, default sequence
+      --start-seq <n>                 default 1
+      --side-mode <fixed|alternate>   default fixed
+    variation:
+      --symbol-seq overrides --symbol
+      --qty-seq overrides --qty
+      --price-seq overrides --price
+      --side-mode alternate starts from --side, then flips side
+    examples:
+      order stream start --symbol-seq AAPL,MSFT --side buy --qty 100 --price 10
+      order stream start --symbol AAPL --side buy --qty-seq 100,200 --price 10
+      order stream start --symbol AAPL --side buy --qty 100 --price-seq 10,10.1
+  order stream stop
+                   Stop active order stream
+  order stream status
+                   Show order stream status
+
   save <file>      Start saving shell transcript
   save stop        Stop saving shell transcript
   save status      Show save status
@@ -345,47 +383,68 @@ func (r *Runner) interruptInput(readDone <-chan struct{}) {
 func (r *Runner) execute(ctx context.Context, command Command) error {
 	switch command.Kind {
 	case CommandLogon:
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.admin.Logon(ctx)
 		if err != nil {
 			return err
 		}
 		return r.recordAdminResult(result)
 	case CommandLogout:
+		r.stopStream()
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.admin.Logout(ctx)
 		if err != nil {
 			return err
 		}
 		return r.recordAdminResult(result)
 	case CommandHeartbeat:
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.admin.Heartbeat(ctx)
 		if err != nil {
 			return err
 		}
 		return r.recordAdminResult(result)
 	case CommandTestRequest:
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.admin.TestRequest(ctx, command.TestRequestID)
 		if err != nil {
 			return err
 		}
 		return r.recordAdminResult(result)
 	case CommandOrderNew:
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.order.NewOrder(ctx, command.NewRequest)
 		if err != nil {
 			return err
 		}
 		return r.recordOrderResult(result)
 	case CommandOrderCancel:
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.order.CancelOrder(ctx, command.CancelRequest)
 		if err != nil {
 			return err
 		}
 		return r.recordOrderResult(result)
 	case CommandOrderReplace:
+		r.orderMu.Lock()
+		defer r.orderMu.Unlock()
 		result, err := r.order.ReplaceOrder(ctx, command.ReplaceRequest)
 		if err != nil {
 			return err
 		}
 		return r.recordOrderResult(result)
+	case CommandStreamStart:
+		return r.startStream(ctx, command.StreamRequest)
+	case CommandStreamStop:
+		return r.stopActiveStream()
+	case CommandStreamStatus:
+		return r.renderStreamStatus()
 	case CommandTraceList:
 		return r.renderTraceList()
 	case CommandSaveStart:
@@ -397,6 +456,32 @@ func (r *Runner) execute(ctx context.Context, command Command) error {
 	default:
 		return fmt.Errorf("unsupported command %q", command.Kind)
 	}
+}
+
+func (r *Runner) startStream(ctx context.Context, request OrderStreamRequest) error {
+	if err := r.stream.Start(ctx, request); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(r.out, "order stream started")
+	return err
+}
+
+func (r *Runner) stopActiveStream() error {
+	if err := r.stream.Stop(); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(r.out, "order stream stopped")
+	return err
+}
+
+func (r *Runner) renderStreamStatus() error {
+	status := r.stream.Status()
+	if !status.Running {
+		_, err := fmt.Fprintf(r.out, "order stream stopped sent=%d success=%d failed=%d last_error=%q\n", status.Sent, status.Succeeded, status.Failed, status.LastError)
+		return err
+	}
+	_, err := fmt.Fprintf(r.out, "order stream running sent=%d success=%d failed=%d last_error=%q\n", status.Sent, status.Succeeded, status.Failed, status.LastError)
+	return err
 }
 
 func (r *Runner) recordInput(line string) error {
@@ -502,6 +587,13 @@ func (r *Runner) stopSession() error {
 	ctx, cancel := context.WithTimeout(context.Background(), r.stopTimeout)
 	defer cancel()
 	return r.manager.Stop(ctx)
+}
+
+func (r *Runner) stopStream() {
+	if r.stream == nil {
+		return
+	}
+	r.stream.StopIfRunning()
 }
 
 func (r *Runner) closeTranscript() error {

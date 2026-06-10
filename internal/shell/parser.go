@@ -2,7 +2,9 @@ package shell
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"fix-tool/internal/order"
 )
@@ -17,6 +19,9 @@ const (
 	CommandOrderNew     CommandKind = "order new"
 	CommandOrderCancel  CommandKind = "order cancel"
 	CommandOrderReplace CommandKind = "order replace"
+	CommandStreamStart  CommandKind = "order stream start"
+	CommandStreamStop   CommandKind = "order stream stop"
+	CommandStreamStatus CommandKind = "order stream status"
 	CommandTraceList    CommandKind = "trace list"
 	CommandSaveStart    CommandKind = "save start"
 	CommandSaveStop     CommandKind = "save stop"
@@ -30,6 +35,7 @@ type Command struct {
 	TestRequestID  string
 	SavePath       string
 	NewRequest     order.NewRequest
+	StreamRequest  OrderStreamRequest
 	CancelRequest  order.CancelRequest
 	ReplaceRequest order.ReplaceRequest
 }
@@ -109,6 +115,8 @@ func parseOrder(args []string) (Command, error) {
 	switch args[0] {
 	case "new":
 		return parseOrderNew(args[1:])
+	case "stream":
+		return parseOrderStream(args[1:])
 	case "cancel":
 		return parseOrderCancel(args[1:])
 	case "replace":
@@ -145,6 +153,130 @@ func parseOrderNew(args []string) (Command, error) {
 			Tags:        values["tag"],
 		},
 	}, nil
+}
+
+func parseOrderStream(args []string) (Command, error) {
+	if len(args) == 0 {
+		return Command{}, fmt.Errorf("order stream requires subcommand")
+	}
+	switch args[0] {
+	case "start":
+		return parseOrderStreamStart(args[1:])
+	case "stop":
+		if len(args) != 1 {
+			return Command{}, fmt.Errorf("order stream stop does not accept arguments")
+		}
+		return Command{Kind: CommandStreamStop}, nil
+	case "status":
+		if len(args) != 1 {
+			return Command{}, fmt.Errorf("order stream status does not accept arguments")
+		}
+		return Command{Kind: CommandStreamStatus}, nil
+	default:
+		return Command{}, fmt.Errorf("unknown order stream subcommand %q", args[0])
+	}
+}
+
+func parseOrderStreamStart(args []string) (Command, error) {
+	values, err := parseFlags(args, map[string]bool{
+		"symbol":           true,
+		"side":             true,
+		"qty":              true,
+		"price":            true,
+		"ord-type":         true,
+		"time-in-force":    true,
+		"tag":              true,
+		"interval":         true,
+		"count":            true,
+		"cl-ord-id-prefix": true,
+		"cl-ord-id-mode":   true,
+		"start-seq":        true,
+		"side-mode":        true,
+		"symbol-seq":       true,
+		"qty-seq":          true,
+		"price-seq":        true,
+	})
+	if err != nil {
+		return Command{}, err
+	}
+	request := defaultOrderStreamRequest()
+	request.Order = order.NewRequest{
+		Symbol:      singleValue(values, "symbol"),
+		Side:        singleValue(values, "side"),
+		OrderQty:    singleValue(values, "qty"),
+		Price:       singleValue(values, "price"),
+		OrdType:     singleValue(values, "ord-type"),
+		TimeInForce: singleValue(values, "time-in-force"),
+		Tags:        values["tag"],
+	}
+	if value := singleValue(values, "interval"); value != "" {
+		interval, err := time.ParseDuration(value)
+		if err != nil || interval <= 0 {
+			return Command{}, fmt.Errorf("参数 --interval 必须是正 duration")
+		}
+		request.Interval = interval
+	}
+	if value := singleValue(values, "count"); value != "" {
+		count, err := strconv.Atoi(value)
+		if err != nil || count < 0 {
+			return Command{}, fmt.Errorf("参数 --count 必须是非负整数")
+		}
+		request.Count = count
+	}
+	if value := singleValue(values, "cl-ord-id-prefix"); value != "" {
+		request.ClOrdIDPrefix = value
+	}
+	if value := singleValue(values, "cl-ord-id-mode"); value != "" {
+		if value != streamClOrdIDModeSequence && value != streamClOrdIDModeRandom {
+			return Command{}, fmt.Errorf("参数 --cl-ord-id-mode 必须是 sequence 或 random")
+		}
+		request.ClOrdIDMode = value
+	}
+	if value := singleValue(values, "start-seq"); value != "" {
+		startSeq, err := strconv.Atoi(value)
+		if err != nil || startSeq < 0 {
+			return Command{}, fmt.Errorf("参数 --start-seq 必须是非负整数")
+		}
+		request.StartSeq = startSeq
+	}
+	if value := singleValue(values, "side-mode"); value != "" {
+		if value != streamSideModeFixed && value != streamSideModeAlternate {
+			return Command{}, fmt.Errorf("参数 --side-mode 必须是 fixed 或 alternate")
+		}
+		request.SideMode = value
+	}
+	if value := singleValue(values, "symbol-seq"); value != "" {
+		request.SymbolSeq, err = parseCSVSequence(value, "symbol-seq")
+		if err != nil {
+			return Command{}, err
+		}
+	}
+	if value := singleValue(values, "qty-seq"); value != "" {
+		request.QtySeq, err = parseCSVSequence(value, "qty-seq")
+		if err != nil {
+			return Command{}, err
+		}
+	}
+	if value := singleValue(values, "price-seq"); value != "" {
+		request.PriceSeq, err = parseCSVSequence(value, "price-seq")
+		if err != nil {
+			return Command{}, err
+		}
+	}
+	return Command{Kind: CommandStreamStart, StreamRequest: request}, nil
+}
+
+func parseCSVSequence(value string, name string) ([]string, error) {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			return nil, fmt.Errorf("参数 --%s 不能包含空项", name)
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func parseOrderCancel(args []string) (Command, error) {

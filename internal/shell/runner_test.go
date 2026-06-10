@@ -197,8 +197,293 @@ func TestRunnerHelpCommand(t *testing.T) {
 	if strings.Contains(out.String(), "F3") {
 		t.Fatalf("out = %q, want no F3 heartbeat shortcut", out.String())
 	}
+	for _, want := range []string{
+		"required:\n      --side <buy|sell>",
+		"--symbol <s> or --symbol-seq <a,b>",
+		"--qty <q> or --qty-seq <a,b>",
+		"limit orders need --price <p> or --price-seq <a,b>",
+		"optional order flags:",
+		"stream controls:",
+		"--interval <duration>           default 1s",
+		"--count <n>                     default 0, until stop",
+		"--cl-ord-id-prefix <prefix>     default STRM",
+		"--cl-ord-id-mode <sequence|random>, default sequence",
+		"--start-seq <n>                 default 1",
+		"--side-mode <fixed|alternate>   default fixed",
+		"variation:",
+		"--symbol-seq overrides --symbol",
+		"--qty-seq overrides --qty",
+		"--price-seq overrides --price",
+		"--side-mode alternate starts from --side, then flips side",
+		"examples:",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("out = %q, want %q", out.String(), want)
+		}
+	}
 	if count := strings.Count(out.String(), "Commands:"); count != 2 {
 		t.Fatalf("help count = %d, want 2 in %q", count, out.String())
+	}
+}
+
+func TestRunnerOrderStreamStartStatusStop(t *testing.T) {
+	var out bytes.Buffer
+	orderService := &runnerRecordingOrderService{}
+	reader := &waitingLineReader{
+		lines: []string{
+			"order stream start --symbol AAPL --side buy --qty 100 --price 10 --interval 10ms",
+			"order stream status",
+			"order stream stop",
+			"order stream status",
+			"exit",
+		},
+		before: map[int]func(){
+			1: func() { waitRunnerRequests(t, orderService, 1) },
+		},
+	}
+	runner := NewRunner(Options{
+		LineReader: reader,
+		Out:        &out,
+		ErrOut:     &bytes.Buffer{},
+		Admin:      &stubAdminService{},
+		Order:      orderService,
+		Manager:    &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"order stream started",
+		"order stream running",
+		"order stream stopped",
+		"sent=",
+		"success=",
+		"failed=",
+		"last_error=",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("out = %q, want %q", got, want)
+		}
+	}
+	if len(orderService.requests()) == 0 {
+		t.Fatal("NewOrder was not called")
+	}
+}
+
+func TestRunnerOrderStreamCountAutoEnd(t *testing.T) {
+	var out bytes.Buffer
+	orderService := &runnerRecordingOrderService{}
+	var runner *Runner
+	reader := &waitingLineReader{
+		lines: []string{
+			"order stream start --symbol AAPL --side buy --qty 100 --price 10 --interval 1ms --count 2",
+			"order stream status",
+			"exit",
+		},
+		before: map[int]func(){
+			1: func() {
+				waitRunnerRequests(t, orderService, 2)
+				waitForStream(t, runner.stream, false)
+			},
+		},
+	}
+	runner = NewRunner(Options{
+		LineReader: reader,
+		Out:        &out,
+		ErrOut:     &bytes.Buffer{},
+		Admin:      &stubAdminService{},
+		Order:      orderService,
+		Manager:    &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	waitRunnerRequests(t, orderService, 2)
+	waitForStream(t, runner.stream, false)
+	status := runner.stream.Status()
+	if status.Sent != 2 || status.Succeeded != 2 {
+		t.Fatalf("status = %#v, want sent=2 success=2", status)
+	}
+}
+
+func TestRunnerOrderStreamDuplicateStartRejected(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	orderService := &runnerRecordingOrderService{}
+	runner := NewRunner(Options{
+		In:      strings.NewReader("order stream start --symbol AAPL --side buy --qty 100 --price 10 --interval 20ms\norder stream start --symbol MSFT --side sell --qty 200 --price 10\norder stream stop\nexit\n"),
+		Out:     &out,
+		ErrOut:  &errOut,
+		Admin:   &stubAdminService{},
+		Order:   orderService,
+		Manager: &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !strings.Contains(errOut.String(), "already running") {
+		t.Fatalf("errOut = %q, want already running", errOut.String())
+	}
+}
+
+func TestRunnerOrderStreamStartWithoutOrderFieldsRejected(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	orderService := &runnerRecordingOrderService{}
+	runner := NewRunner(Options{
+		In:      strings.NewReader("order stream start\nexit\n"),
+		Out:     &out,
+		ErrOut:  &errOut,
+		Admin:   &stubAdminService{},
+		Order:   orderService,
+		Manager: &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !strings.Contains(errOut.String(), "缺少必填参数 --symbol") {
+		t.Fatalf("errOut = %q, want missing symbol", errOut.String())
+	}
+	if strings.Contains(out.String(), "order stream started") {
+		t.Fatalf("out = %q, want stream not started", out.String())
+	}
+	if len(orderService.requests()) != 0 {
+		t.Fatalf("requests = %d, want 0", len(orderService.requests()))
+	}
+}
+
+func TestRunnerOrderStreamStartAcceptsSequenceRequiredEquivalents(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+	}{
+		{
+			name: "symbol sequence replaces symbol",
+			line: "order stream start --symbol-seq AAPL,MSFT --side buy --qty 100 --price 10",
+		},
+		{
+			name: "qty sequence replaces qty",
+			line: "order stream start --symbol AAPL --side buy --qty-seq 100,200 --price 10",
+		},
+		{
+			name: "price sequence replaces price",
+			line: "order stream start --symbol AAPL --side buy --qty 100 --price-seq 10,10.1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+			orderService := &runnerRecordingOrderService{}
+			reader := &waitingLineReader{
+				lines: []string{tt.line, "order stream stop", "exit"},
+				before: map[int]func(){
+					1: func() { waitRunnerRequests(t, orderService, 1) },
+				},
+			}
+			runner := NewRunner(Options{
+				LineReader: reader,
+				Out:        &out,
+				ErrOut:     &errOut,
+				Admin:      &stubAdminService{},
+				Order:      orderService,
+				Manager:    &runnerFakeManager{},
+			})
+
+			if err := runner.Run(context.Background()); err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			if !strings.Contains(out.String(), "order stream started") {
+				t.Fatalf("out = %q, want stream started", out.String())
+			}
+			if errOut.String() != "" {
+				t.Fatalf("errOut = %q, want empty", errOut.String())
+			}
+			if len(orderService.requests()) == 0 {
+				t.Fatal("NewOrder was not called")
+			}
+		})
+	}
+}
+
+func TestRunnerLogoutStopsOrderStream(t *testing.T) {
+	var out bytes.Buffer
+	orderService := &runnerRecordingOrderService{}
+	adminService := &stubAdminService{}
+	reader := &waitingLineReader{
+		lines: []string{
+			"order stream start --symbol AAPL --side buy --qty 100 --price 10 --interval 10ms",
+			"logout",
+			"order stream status",
+			"exit",
+		},
+		before: map[int]func(){
+			1: func() { waitRunnerRequests(t, orderService, 1) },
+		},
+	}
+	runner := NewRunner(Options{
+		LineReader: reader,
+		Out:        &out,
+		ErrOut:     &bytes.Buffer{},
+		Admin:      adminService,
+		Order:      orderService,
+		Manager:    &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if adminService.logoutCalls != 1 {
+		t.Fatalf("logoutCalls = %d, want 1", adminService.logoutCalls)
+	}
+	if !strings.Contains(out.String(), "order stream stopped") {
+		t.Fatalf("out = %q, want stopped status", out.String())
+	}
+	if runner.stream.Status().Running {
+		t.Fatal("stream Running = true, want false")
+	}
+}
+
+func TestRunnerAdminCommandWaitsForActiveStreamOrder(t *testing.T) {
+	var out bytes.Buffer
+	orderService := newRunnerBlockingOrderService()
+	adminService := &stubAdminService{}
+	reader := &waitingLineReader{
+		lines: []string{
+			"order stream start --symbol AAPL --side buy --qty 100 --price 10 --interval 1s",
+			"heartbeat",
+			"order stream stop",
+			"exit",
+		},
+		before: map[int]func(){
+			1: func() {
+				waitForCall(t, orderService.called)
+				close(orderService.release)
+			},
+		},
+	}
+	runner := NewRunner(Options{
+		LineReader: reader,
+		Out:        &out,
+		ErrOut:     &bytes.Buffer{},
+		Admin:      adminService,
+		Order:      orderService,
+		Manager:    &runnerFakeManager{},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if adminService.heartbeatCalls != 1 {
+		t.Fatalf("heartbeatCalls = %d, want 1", adminService.heartbeatCalls)
+	}
+	if orderService.requestsCount() != 1 {
+		t.Fatalf("requests = %d, want 1", orderService.requestsCount())
 	}
 }
 
@@ -371,8 +656,10 @@ func TestRunnerReusesManagerSessionAndLoggedOnState(t *testing.T) {
 }
 
 type stubAdminService struct {
-	logonResult  admin.Result
-	heartbeatErr error
+	logonResult    admin.Result
+	heartbeatErr   error
+	logoutCalls    int
+	heartbeatCalls int
 }
 
 func (s *stubAdminService) Logon(context.Context) (admin.Result, error) {
@@ -380,10 +667,12 @@ func (s *stubAdminService) Logon(context.Context) (admin.Result, error) {
 }
 
 func (s *stubAdminService) Logout(context.Context) (admin.Result, error) {
+	s.logoutCalls++
 	return admin.Result{}, nil
 }
 
 func (s *stubAdminService) Heartbeat(context.Context) (admin.Result, error) {
+	s.heartbeatCalls++
 	if s.heartbeatErr != nil {
 		return admin.Result{}, s.heartbeatErr
 	}
@@ -412,6 +701,95 @@ func (s *stubOrderService) ReplaceOrder(context.Context, order.ReplaceRequest) (
 	return s.replaceResult, nil
 }
 
+type runnerRecordingOrderService struct {
+	mu            sync.Mutex
+	requestsValue []order.NewRequest
+}
+
+func (s *runnerRecordingOrderService) NewOrder(_ context.Context, request order.NewRequest) (order.Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.requestsValue = append(s.requestsValue, request)
+	return order.Result{}, nil
+}
+
+func (s *runnerRecordingOrderService) CancelOrder(context.Context, order.CancelRequest) (order.Result, error) {
+	return order.Result{}, nil
+}
+
+func (s *runnerRecordingOrderService) ReplaceOrder(context.Context, order.ReplaceRequest) (order.Result, error) {
+	return order.Result{}, nil
+}
+
+func (s *runnerRecordingOrderService) requests() []order.NewRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]order.NewRequest, len(s.requestsValue))
+	copy(result, s.requestsValue)
+	return result
+}
+
+func waitRunnerRequests(t *testing.T, service *runnerRecordingOrderService, count int) {
+	t.Helper()
+	deadline := time.After(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			t.Fatalf("requests = %d, want %d", len(service.requests()), count)
+		case <-ticker.C:
+			if len(service.requests()) >= count {
+				return
+			}
+		}
+	}
+}
+
+type runnerBlockingOrderService struct {
+	calledOnce   sync.Once
+	called       chan struct{}
+	release      chan struct{}
+	mu           sync.Mutex
+	requestCount int
+}
+
+func newRunnerBlockingOrderService() *runnerBlockingOrderService {
+	return &runnerBlockingOrderService{
+		called:  make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (s *runnerBlockingOrderService) NewOrder(ctx context.Context, request order.NewRequest) (order.Result, error) {
+	s.mu.Lock()
+	s.requestCount++
+	s.mu.Unlock()
+	s.calledOnce.Do(func() {
+		close(s.called)
+	})
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+		return order.Result{}, ctx.Err()
+	}
+	return order.Result{}, nil
+}
+
+func (s *runnerBlockingOrderService) CancelOrder(context.Context, order.CancelRequest) (order.Result, error) {
+	return order.Result{}, nil
+}
+
+func (s *runnerBlockingOrderService) ReplaceOrder(context.Context, order.ReplaceRequest) (order.Result, error) {
+	return order.Result{}, nil
+}
+
+func (s *runnerBlockingOrderService) requestsCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requestCount
+}
+
 type fakeLineReader struct {
 	lines   []string
 	prompts []string
@@ -432,6 +810,33 @@ func (r *fakeLineReader) ReadLine(ctx context.Context, prompt string) (string, b
 }
 
 func (r *fakeLineReader) Close() error {
+	r.closed = true
+	return nil
+}
+
+type waitingLineReader struct {
+	lines  []string
+	before map[int]func()
+	index  int
+	closed bool
+}
+
+func (r *waitingLineReader) ReadLine(ctx context.Context, prompt string) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
+	if r.index >= len(r.lines) {
+		return "", false, nil
+	}
+	if fn := r.before[r.index]; fn != nil {
+		fn()
+	}
+	line := r.lines[r.index]
+	r.index++
+	return line, true, nil
+}
+
+func (r *waitingLineReader) Close() error {
 	r.closed = true
 	return nil
 }
