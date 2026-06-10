@@ -4,7 +4,7 @@ DIST_DIR ?= dist
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-TARGETS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
+TARGETS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64
 LD_FLAGS := -s -w -X 'fix-tool/internal/version.Version=$(VERSION)' -X 'fix-tool/internal/version.Commit=$(COMMIT)' -X 'fix-tool/internal/version.BuildTime=$(BUILD_TIME)'
 
 .PHONY: build clean cross-build release test vuln
@@ -35,20 +35,23 @@ cross-build:
 release:
 	rm -rf $(DIST_DIR)/release
 	mkdir -p $(DIST_DIR)/release
+	set -e; \
 	for target in $(TARGETS); do \
 		os=$${target%/*}; \
 		arch=$${target#*/}; \
 		pkg="$(APP)_$(VERSION)_$${os}_$${arch}"; \
 		pkg_dir="$(DIST_DIR)/release/$$pkg"; \
+		bin_name="$(APP)"; \
+		if [ "$$os" = "windows" ]; then bin_name="$(APP).exe"; fi; \
 		mkdir -p "$$pkg_dir/config" "$$pkg_dir/docs/project/fix-tool" "$$pkg_dir/testdata/scenarios" "$$pkg_dir/testdata/dictionaries"; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LD_FLAGS)" -o "$$pkg_dir/$(APP)" $(CMD); \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LD_FLAGS)" -o "$$pkg_dir/$$bin_name" $(CMD); \
 		cp README.md "$$pkg_dir/README.md"; \
 		cp config/config-example.toml "$$pkg_dir/config/config-example.toml"; \
 		cp docs/project/fix-tool/user-guide.md "$$pkg_dir/docs/project/fix-tool/user-guide.md"; \
 		cp docs/project/fix-tool/faq.md "$$pkg_dir/docs/project/fix-tool/faq.md"; \
 		cp testdata/scenarios/order-lifecycle.yaml "$$pkg_dir/testdata/scenarios/order-lifecycle.yaml"; \
 		cp testdata/dictionaries/custom-tags.toml "$$pkg_dir/testdata/dictionaries/custom-tags.toml"; \
-		tar -C "$(DIST_DIR)/release" -czf "$(DIST_DIR)/release/$$pkg.tar.gz" "$$pkg"; \
+		(cd "$(DIST_DIR)/release" && zip -qr "$$pkg.zip" "$$pkg"); \
 		rm -rf "$$pkg_dir"; \
 	done
-	cd $(DIST_DIR)/release && shasum -a 256 *.tar.gz > checksums.txt
+	cd $(DIST_DIR)/release && shasum -a 256 *.zip > checksums.txt
